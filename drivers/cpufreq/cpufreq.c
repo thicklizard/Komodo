@@ -38,7 +38,7 @@
  * level driver of CPUFreq support, and its spinlock. This lock
  * also protects the cpufreq_cpu_data array.
  */
-#define FREQ_STEPS	27
+#define FREQ_STEPS  26
 static struct cpufreq_driver *cpufreq_driver;
 static DEFINE_PER_CPU(struct cpufreq_policy *, cpufreq_cpu_data);
 #ifdef CONFIG_HOTPLUG_CPU
@@ -581,77 +581,80 @@ extern void acpuclk_set_vdd(unsigned acpu_khz, int vdd);
 extern void acpuclk_UV_mV_table(int cnt, int vdd_uv[]);
 
 static ssize_t show_vdd_levels(struct kobject *a, struct attribute *b, char *buf) {
-	return acpuclk_get_vdd_levels_str(buf, 0);
+return acpuclk_get_vdd_levels_str(buf, 0);
 }
 
 static ssize_t store_vdd_levels(struct kobject *a, struct attribute *b, const char *buf, size_t count) {
 
-	int i = 0, j;
-	int pair[2] = { 0, 0 };
-	int sign = 0;
+int i = 0, j;
+int pair[2] = { 0, 0 };
+int sign = 0;
 
-	if (count < 1)
-		return 0;
+if (count < 1)
+return 0;
 
-	if (buf[0] == '-') {
-		sign = -1;
-		i++;
-	}
-	else if (buf[0] == '+') {
-		sign = 1;
-		i++;
-	}
+if (buf[0] == '-') {
+sign = -1;
+i++;
+}
+else if (buf[0] == '+') {
+sign = 1;
+i++;
+}
 
-	for (j = 0; i < count; i++) {
-	
-		char c = buf[i];
-		
-		if ((c >= '0') && (c <= '9')) {
-			pair[j] *= 10;
-			pair[j] += (c - '0');
-		}
-		else if ((c == ' ') || (c == '\t')) {
-			if (pair[j] != 0) {
-				j++;
+for (j = 0; i < count; i++) {
 
-				if ((sign != 0) || (j > 1))
-					break;
-			}
-		}
-		else
-			break;
-	}
+char c = buf[i];
 
-	if (sign != 0) {
-		if (pair[0] > 0)
-			acpuclk_set_vdd(0, sign * pair[0]);
-	}
-	else {
-		if ((pair[0] > 0) && (pair[1] > 0))
-			acpuclk_set_vdd((unsigned)pair[0], pair[1]);
-		else
-			return -EINVAL;
-	}
-	return count;
+if ((c >= '0') && (c <= '9')) {
+pair[j] *= 10;
+pair[j] += (c - '0');
+}
+else if ((c == ' ') || (c == '\t')) {
+if (pair[j] != 0) {
+j++;
+
+if ((sign != 0) || (j > 1))
+break;
+}
+}
+else
+break;
+}
+
+if (sign != 0) {
+if (pair[0] > 0)
+acpuclk_set_vdd(0, sign * pair[0]);
+}
+else {
+if ((pair[0] > 0) && (pair[1] > 0))
+acpuclk_set_vdd((unsigned)pair[0], pair[1]);
+else
+return -EINVAL;
+}
+return count;
 }
 
 ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf)
 {
-	return acpuclk_get_vdd_levels_str(buf, FREQ_STEPS);
+return acpuclk_get_vdd_levels_str(buf, FREQ_STEPS);
 }
 
 ssize_t store_UV_mV_table(struct cpufreq_policy *policy,
-                                      const char *buf, size_t count)
+const char *buf, size_t count)
 {
-	unsigned int ret = -EINVAL;
-	int u[FREQ_STEPS];
-	ret = sscanf(buf, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d", &u[0], &u[1], &u[2], &u[3], &u[4], &u[5], &u[6], &u[7], &u[8], &u[9], &u[10], &u[11], &u[12], &u[13], &u[14], &u[15], &u[16], &u[17], &u[18], &u[19], &u[20], &u[21], &u[22], &u[23], &u[24], &u[25], &u[26], &u[27]);
-	if(ret != FREQ_STEPS) {
-		return -EINVAL;
-	}
+unsigned int ret = -EINVAL;
+int u[FREQ_STEPS];
 
-	acpuclk_UV_mV_table(FREQ_STEPS, u);
-	return count;
+ret = sscanf(buf, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d", &u[0], &u[1], &u[2], &u[3], &u[4], &u[5], &u[6], &u[7], &u[8], &u[9], &u[10], &u[11], &u[12], &u[13], &u[14], &u[15], &u[16], &u[17], &u[18], &u[19], &u[20], &u[21], &u[22], &u[23], &u[24], &u[25]);
+
+
+if(ret != FREQ_STEPS) {
+return -EINVAL;
+}
+
+acpuclk_UV_mV_table(FREQ_STEPS, u);
+return count;
 }
 
 cpufreq_freq_attr_ro_perm(cpuinfo_cur_freq, 0400);
