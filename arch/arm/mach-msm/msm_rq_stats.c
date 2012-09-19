@@ -34,7 +34,7 @@
 #ifdef CONFIG_MSM_MPDEC
 unsigned int get_rq_info(void)
 {
-unsigned long flags = 0;
+	unsigned long flags = 0;
         unsigned int rq = 0;
 
         spin_lock_irqsave(&rq_lock, flags);
