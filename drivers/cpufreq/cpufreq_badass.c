@@ -672,12 +672,6 @@ define_one_global_rw(three_phase_freq);
 define_one_global_rw(busy_threshold);
 define_one_global_rw(busy_clr_threshold);
 #endif
-#ifdef CONFIG_CPU_FREQ_GOV_BADASS_GPU_CONTROL
-define_one_global_rw(gpu_semi_busy_threshold);
-define_one_global_rw(gpu_semi_busy_clr_threshold);
-define_one_global_rw(gpu_busy_threshold);
-define_one_global_rw(gpu_busy_clr_threshold);
-#endif
 
 static struct attribute *bds_attributes[] = {
 	&sampling_rate_min.attr,
@@ -866,7 +860,7 @@ static void bds_check_cpu(struct cpu_bds_info_s *this_bds_info)
  *			 busy_counter: '%i'", phase, counter);
  */
 
-
+		if ((bds_tuners_ins.two_phase_freq != 0) && (phase == 0)) {
 			/* idle phase */
 			if (bds_tuners_ins.two_phase_freq > (policy->max*PHASE_2_PERCENT/100)) {
 				new_phase_max = (policy->max*PHASE_2_PERCENT/100);
@@ -875,11 +869,7 @@ static void bds_check_cpu(struct cpu_bds_info_s *this_bds_info)
 			}
 			bds_freq_increase(policy, new_phase_max);
 #ifdef CONFIG_CPU_FREQ_GOV_BADASS_3_PHASE
-#ifdef CONFIG_CPU_FREQ_GOV_BADASS_GPU_CONTROL
-		} else if (bds_tuners_ins.three_phase_freq != 0 && ((phase == 1) || (gpu_busy_phase == 1))) {
-#else
 		} else if ((bds_tuners_ins.three_phase_freq != 0) && (phase == 1)) {
-#endif
 			/* semi-busy phase */
 			if (bds_tuners_ins.three_phase_freq > (policy->max*PHASE_3_PERCENT/100)) {
 				new_phase_max = (policy->max*PHASE_3_PERCENT/100);
