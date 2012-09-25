@@ -716,7 +716,7 @@ ifdef INSTALL_MOD_STRIP
 ifeq ($(INSTALL_MOD_STRIP),1)
 mod_strip_cmd = $(STRIP) --strip-debug
 else
-mod_strip_cmd = $(STRIP) $(INSTALL_MOD_STRIP)
+mod_strip_cmd = $(STRIP) --strip-debug
 endif # INSTALL_MOD_STRIP=1
 else
 mod_strip_cmd = true

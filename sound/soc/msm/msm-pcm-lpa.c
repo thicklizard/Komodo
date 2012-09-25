@@ -31,12 +31,18 @@
 #include <sound/snd_compress_params.h>
 #include <sound/compress_offload.h>
 #include <sound/compress_driver.h>
-#include <sound/timer.h>
 
 #include "msm-pcm-q6.h"
 #include "msm-pcm-routing.h"
 
 #define Q6_EFFECT_DEBUG 0
+
+//htc audio ++
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+//htc audio --
 
 static struct audio_locks the_locks;
 
@@ -101,10 +107,6 @@ static void event_handler(uint32_t opcode,
 			prtd->pcm_irq_pos = 0;
 		if (atomic_read(&prtd->start))
 			snd_pcm_period_elapsed(substream);
-		else
-			if (substream->timer_running)
-				snd_timer_interrupt(substream->timer, 1);
-
 		atomic_inc(&prtd->out_count);
 		wake_up(&the_locks.write_wait);
 		if (!atomic_read(&prtd->start)) {
@@ -112,16 +114,12 @@ static void event_handler(uint32_t opcode,
 			break;
 		} else
 			atomic_set(&prtd->pending_buffer, 0);
-
-		buf = prtd->audio_client->port[IN].buf;
-		if (runtime->status->hw_ptr >= runtime->control->appl_ptr) {
-			memset((void *)buf[0].data +
-				(prtd->out_head * prtd->pcm_count),
-				0, prtd->pcm_count);
-		}
+		if (runtime->status->hw_ptr >= runtime->control->appl_ptr)
+			break;
 		pr_debug("%s:writing %d bytes of buffer to dsp 2\n",
 				__func__, prtd->pcm_count);
 
+		buf = prtd->audio_client->port[IN].buf;
 		param.paddr = (unsigned long)buf[0].phys
 				+ (prtd->out_head * prtd->pcm_count);
 		param.len = prtd->pcm_count;
@@ -153,8 +151,7 @@ static void event_handler(uint32_t opcode,
 		case ASM_SESSION_CMD_RUN: {
 			if (!atomic_read(&prtd->pending_buffer))
 				break;
-			if (runtime->status->hw_ptr >=
-				runtime->control->appl_ptr)
+			if (runtime->status->hw_ptr >= runtime->control->appl_ptr)
 				break;
 			pr_debug("%s:writing %d bytes"
 				" of buffer to dsp\n",
@@ -237,12 +234,10 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		pr_debug("SNDRV_PCM_TRIGGER_START\n");
 		q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
 		atomic_set(&prtd->start, 1);
-		atomic_set(&prtd->stop, 0);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 		pr_debug("SNDRV_PCM_TRIGGER_STOP\n");
 		atomic_set(&prtd->start, 0);
-		atomic_set(&prtd->stop, 1);
 		if (substream->stream != SNDRV_PCM_STREAM_PLAYBACK)
 			break;
 		break;
@@ -330,7 +325,6 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 
 	prtd->dsp_cnt = 0;
 	atomic_set(&prtd->pending_buffer, 1);
-	atomic_set(&prtd->stop, 1);
 	runtime->private_data = prtd;
 	lpa_audio.prtd = prtd;
 	lpa_set_volume(lpa_audio.volume);
@@ -374,16 +368,16 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	To issue EOS to dsp, we need to be run state otherwise
 	EOS is not honored.
 	*/
-	if (msm_routing_check_backend_enabled(soc_prtd->dai_link->be_id) &&
-		(!atomic_read(&prtd->stop))) {
-		rc = q6asm_run(prtd->audio_client, 0, 0, 0);
+	if (msm_routing_check_backend_enabled(soc_prtd->dai_link->be_id)) {
+		rc = q6asm_run(prtd->audio_client,0,0,0);
 		atomic_set(&prtd->pending_buffer, 0);
 		prtd->cmd_ack = 0;
 		q6asm_cmd_nowait(prtd->audio_client, CMD_EOS);
-		pr_debug("%s\n", __func__);
+		pr_debug("%s ++\n", __func__);
 		rc = wait_event_timeout(the_locks.eos_wait,
-			prtd->cmd_ack, 5 * HZ);
-		if (rc < 0)
+			prtd->cmd_ack, 3 * HZ);
+		pr_debug("%s --\n", __func__);
+		if (rc <= 0)
 			pr_err("EOS cmd timeout\n");
 		prtd->pcm_irq_pos = 0;
 	}
@@ -395,8 +389,7 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	q6asm_audio_client_buf_free_contiguous(dir,
 				prtd->audio_client);
 
-	atomic_set(&prtd->stop, 1);
-	pr_debug("%s\n", __func__);
+	pr_info("%s\n", __func__);
 	msm_pcm_routing_dereg_phy_stream(soc_prtd->dai_link->be_id,
 		SNDRV_PCM_STREAM_PLAYBACK);
 	pr_info("%s\n", __func__);

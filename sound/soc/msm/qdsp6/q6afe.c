@@ -21,6 +21,13 @@
 #include <sound/apr_audio.h>
 #include <sound/q6afe.h>
 
+//htc audio ++
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+//htc audio --
+
 struct afe_ctl {
 	void *apr;
 	atomic_t state;
@@ -37,7 +44,7 @@ struct afe_ctl {
 
 static struct afe_ctl this_afe;
 
-static struct acdb_cal_block afe_cal_addr[MAX_AUDPROC_TYPES];
+static uint32_t afe_cal_addr[MAX_AUDPROC_TYPES];
 
 #define TIMEOUT_MS 1000
 #define Q6AFE_MAX_VOLUME 0x3FFF
@@ -70,9 +77,17 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 					payload[0], payload[1]);
 		/* payload[1] contains the error status for response */
 		if (payload[1] != 0) {
+			//HTC_AUD +++
+			/* to avoid false alarm */
+			switch (payload[0]) {
+			case AFE_PORT_CMD_SIDETONE_CTL:
+				break;
+			//HTC_AUD ---
+			default:
 			atomic_set(&this_afe.status, -1);
 			pr_err("%s: cmd = 0x%x returned error = 0x%x\n",
 					__func__, payload[0], payload[1]);
+			}
 		}
 		if (data->opcode == APR_BASIC_RSP_RESULT) {
 			switch (payload[0]) {
@@ -330,16 +345,12 @@ static void afe_send_cal_block(int32_t path, u16 port_id)
 		goto done;
 	}
 
-	if ((afe_cal_addr[path].cal_paddr != cal_block.cal_paddr) ||
-		(cal_block.cal_size > afe_cal_addr[path].cal_size)) {
-		if (afe_cal_addr[path].cal_paddr != 0)
-			afe_cmd_memory_unmap_nowait(
-				afe_cal_addr[path].cal_paddr);
-
+	if (afe_cal_addr[path] != cal_block.cal_paddr) {
+		if (afe_cal_addr[path] != 0)
+			afe_cmd_memory_unmap_nowait(afe_cal_addr[path]);
 		afe_cmd_memory_map_nowait(cal_block.cal_paddr,
 						cal_block.cal_size);
-		afe_cal_addr[path].cal_paddr = cal_block.cal_paddr;
-		afe_cal_addr[path].cal_size = cal_block.cal_size;
+		afe_cal_addr[path] = cal_block.cal_paddr;
 	}
 
 	afe_cal.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -1540,9 +1551,8 @@ static void __exit afe_exit(void)
 		debugfs_remove(debugfs_afelb_gain);
 #endif
 	for (i = 0; i < MAX_AUDPROC_TYPES; i++) {
-		if (afe_cal_addr[i].cal_paddr != 0)
-			afe_cmd_memory_unmap_nowait(
-				afe_cal_addr[i].cal_paddr);
+		if (afe_cal_addr[i] != 0)
+			afe_cmd_memory_unmap_nowait(afe_cal_addr[i]);
 	}
 }
 
