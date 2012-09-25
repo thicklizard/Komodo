@@ -226,8 +226,12 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 #endif
 
 		policy->min = 192000;
+<<<<<<< HEAD
 		policy->max = 1512000;
 
+=======
+		policy->max = 2106000;
+>>>>>>> parent of 3c6a733... added_prima_wlan
 
 	return 0;
 }
