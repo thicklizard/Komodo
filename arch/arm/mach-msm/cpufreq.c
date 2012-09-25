@@ -229,15 +229,11 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
-<<<<<<< HEAD
 		policy->max = 1512000;
 
 =======
 		policy->max = 2106000;
 >>>>>>> parent of 3c6a733... added_prima_wlan
-=======
-		policy->max = 1512000;
->>>>>>> parent of 29e0612... update_from_cyanogen
 =======
 		policy->max = 1512000;
 >>>>>>> parent of 29e0612... update_from_cyanogen
