@@ -10,8 +10,6 @@
  * GNU General Public License for more details.
  */
 
-#pragma GCC diagnostic ignored "-Warray-bounds"
-
 #ifndef __ARCH_ARM_MACH_MSM_BOARD_JET_H
 #define __ARCH_ARM_MACH_MSM_BOARD_JET_H
 
