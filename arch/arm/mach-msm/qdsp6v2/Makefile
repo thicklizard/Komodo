@@ -15,6 +15,6 @@ endif
 obj-$(CONFIG_MSM_QDSP6_APR) += apr.o apr_tal.o q6core.o dsp_debug.o
 obj-y += audio_acdb.o
 obj-y += aac_in.o qcelp_in.o evrc_in.o amrnb_in.o audio_utils.o
-obj-y += audio_wma.o audio_wmapro.o audio_aac.o audio_multi_aac.o audio_utils_aio.o
+obj-y += audio_wma.o audio_wmapro.o audio_aac.o audio_multi_aac.o audio_utils_aio.o 
 obj-$(CONFIG_MSM_ULTRASOUND) += ultrasound/
-obj-y += audio_mp3.o audio_amrnb.o audio_amrwb.o audio_evrc.o audio_qcelp.o amrwb_in.o
+obj-y += audio_mp3.o audio_amrnb.o audio_amrwb.o audio_evrc.o audio_qcelp.o amrwb_in.o 
