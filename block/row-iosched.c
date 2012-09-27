@@ -393,7 +393,15 @@ static int row_dispatch_requests(struct request_queue *q, int force)
 
 		if (queue_idling_enabled[currq] &&
 		    rd->row_queues[currq].rqueue.idle_data.begin_idling) {
-			
+			if (!kblockd_schedule_delayed_work(rd->dispatch_queue,
+			     &rd->read_idle.idle_work, jiffies +
+			     msecs_to_jiffies(rd->read_idle.idle_time))) {
+				row_log_rowq(rd, currq,
+					     "Work already on queue!");
+				pr_err("ROW_BUG: Work already on queue!");
+			} else
+				row_log_rowq(rd, currq,
+				     "Scheduled delayed work. exiting");
 			goto done;
 		} else {
 			row_log_rowq(rd, currq,
@@ -665,3 +673,4 @@ module_exit(row_exit);
 
 MODULE_LICENSE("GPLv2");
 MODULE_DESCRIPTION("Read Over Write IO scheduler");
+
