@@ -16,12 +16,14 @@
 #include <linux/msm_audio.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
+#include <linux/dma-mapping.h>
 #include <linux/sched.h>
 #include <linux/workqueue.h>
 #include <asm/uaccess.h>
 #include <asm/atomic.h>
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/debug_mm.h>
+#include <mach/qdsp6v2/q6afe.h>
 #include <mach/qdsp6v2/q6voice.h>
 #include <sound/apr_audio.h>
 #include <sound/q6adm.h>
@@ -151,8 +153,8 @@ int msm_set_copp_id(int session_id, int copp_id)
 	pr_debug("%s: session[%d] copp_id[%d] index[%d]\n", __func__,
 			session_id, copp_id, index);
 	mutex_lock(&routing_info.copp_list_mutex);
-	if (routing_info.copp_list[session_id][index] == COPP_IGNORE)
-		routing_info.copp_list[session_id][index] = copp_id;
+	if (routing_info.copp_list[session_id][index] == DEVICE_IGNORE)
+		 routing_info.copp_list[session_id][index] = copp_id;
 	mutex_unlock(&routing_info.copp_list_mutex);
 
 	return rc;
@@ -170,7 +172,7 @@ int msm_clear_copp_id(int session_id, int copp_id)
 			session_id, copp_id, index);
 	mutex_lock(&routing_info.copp_list_mutex);
 	if (routing_info.copp_list[session_id][index] == copp_id)
-		routing_info.copp_list[session_id][index] = COPP_IGNORE;
+		 routing_info.copp_list[session_id][index] = DEVICE_IGNORE;
 #ifdef CONFIG_MSM8X60_RTAC
 	rtac_remove_adm_device(copp_id, session_id);
 #endif
@@ -267,6 +269,10 @@ EXPORT_SYMBOL(msm_set_voice_mute);
 
 int msm_set_voice_vol(int dir, s32 volume, u32 session_id)
 {
+
+	if (!audio_dev_ctrl.voice_rx_dev
+                || !audio_dev_ctrl.voice_tx_dev)
+              return -EPERM;
 	if (dir == DIR_TX) {
 		routing_info.voice_tx_vol = volume;
 		broadcast_event(AUDDEV_EVT_DEVICE_VOL_MUTE_CHG,
@@ -384,9 +390,15 @@ int msm_snddev_set_dec(int popp_id, int copp_id, int set,
 		if (rc < 0) {
 			pr_err("%s: adm open fail rc[%d]\n", __func__, rc);
 			rc = -EINVAL;
-			mutex_unlock(&routing_info.adm_mutex);
-			return rc;
+			goto fail_cmd;
 		}
+
+	 rc = adm_matrix_map(popp_id, PLAYBACK, 1, &copp_id);
+	 if (rc < 0) {
+	 pr_err("%s: matrix map failed rc[%d]\n", __func__, rc);
+	 adm_close(copp_id);
+	 rc = -EINVAL;
+	 goto fail_cmd;
 		msm_set_copp_id(popp_id, copp_id);
 		pr_debug("%s:Session id=%d copp_id=%d\n",
 			__func__, popp_id, copp_id);
@@ -531,7 +543,7 @@ int msm_snddev_set_enc(int popp_id, int copp_id, int set,
 			rate = 16000;
 		}
 		mutex_unlock(&adm_tx_topology_tbl.lock);
-		rc = adm_open(copp_id, ADM_PATH_LIVE_REC, rate, mode, topology);
+		rc = adm_open(copp_id, LIVE_RECORDING, rate, mode, topology);
 		if (rc < 0) {
 			pr_err("%s: adm open fail rc[%d]\n", __func__, rc);
 			rc = -EINVAL;

@@ -427,6 +427,25 @@ struct vss_istream_cmd_start_record_t {
 	 */
 } __attribute__((packed));
 
+#define VSS_TAP_POINT_NONE 0x00010F78
+/* Indicates no tapping for specified path. */
+
+#define VSS_TAP_POINT_STREAM_END 0x00010F79
+/* Indicates that specified path should be tapped at the end of the stream. */
+
+struct vss_istream_cmd_start_record_t {
+ uint32_t rx_tap_point;
+ /* Tap point to use on the Rx path. Supported values are:
+ * VSS_TAP_POINT_NONE : Do not record Rx path.
+ * VSS_TAP_POINT_STREAM_END : Rx tap point is at the end of the stream.
+ */
+ uint32_t tx_tap_point;
+ /* Tap point to use on the Tx path. Supported values are:
+ * VSS_TAP_POINT_NONE : Do not record tx path.
+ * VSS_TAP_POINT_STREAM_END : Tx tap point is at the end of the stream.
+ */
+} __attribute__((packed));
+
 struct cvs_create_passive_ctl_session_cmd {
 	struct apr_hdr hdr;
 	struct vss_istream_cmd_create_passive_control_session_t cvs_session;
@@ -485,10 +504,13 @@ struct cvs_start_record_cmd {
 		struct vss_istream_cmd_start_record_t rec_mode;
 } __attribute__((packed));
 
+
 /* TO CVP commands */
 
 #define VSS_IVOCPROC_CMD_CREATE_FULL_CONTROL_SESSION	0x000100C3
 /**< Wait for APRV2_IBASIC_RSP_RESULT response. */
+
+int voice_start_record(uint32_t rec_mode, uint32_t set);
 
 #define APRV2_IBASIC_CMD_DESTROY_SESSION		0x0001003C
 

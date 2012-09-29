@@ -19,8 +19,9 @@
 
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/qdsp6v2/audio_acdb.h>
-#include <mach/qdsp6v2/rtac.h>
 
+#include <mach/qdsp6v2/rtac.h>
+#include <mach/qdsp6v2/q6afe.h>
 #include <sound/apr_audio.h>
 #include <sound/q6afe.h>
 

@@ -20,6 +20,7 @@
 #include <mach/qdsp6v2/audio_acdb.h>
 #include <sound/apr_audio.h>
 #include <sound/q6afe.h>
+#include <mach/qdsp6v2/q6afe.h>
 
 struct afe_ctl {
 	void *apr;
@@ -81,7 +82,7 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 			case AFE_PORT_CMD_START:
 			case AFE_PORT_CMD_LOOPBACK:
 			case AFE_PORT_CMD_SIDETONE_CTL:
-			case AFE_PORT_CMD_SET_PARAM:
+ //                case AFE_PORT_CMD_SET_PARAM:
 			case AFE_PSEUDOPORT_CMD_START:
 			case AFE_PSEUDOPORT_CMD_STOP:
 			case AFE_PORT_CMD_APPLY_GAIN:

@@ -2135,6 +2135,137 @@ int voice_start_playback(uint32_t set)
 	return ret;
 }
 
+static int voice_cvs_start_record(struct voice_data *v, uint32_t rec_mode)
+{
+ int ret = 0;
+ void *apr_cvs = voice_get_apr_cvs(v);
+ u16 cvs_handle = voice_get_cvs_handle(v);
+ struct cvs_start_record_cmd cvs_start_record;
+
+ pr_debug("%s: Start record %d\n", __func__, rec_mode);
+
+ cvs_start_record.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+ APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+ cvs_start_record.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+ sizeof(cvs_start_record) - APR_HDR_SIZE);
+ cvs_start_record.hdr.src_port = 0;
+ cvs_start_record.hdr.dest_port = cvs_handle;
+ cvs_start_record.hdr.token = 0;
+ cvs_start_record.hdr.opcode = VSS_ISTREAM_CMD_START_RECORD;
+
+ if (rec_mode == VOC_REC_UPLINK) {
+ cvs_start_record.rec_mode.rx_tap_point = VSS_TAP_POINT_NONE;
+ cvs_start_record.rec_mode.tx_tap_point =
+ VSS_TAP_POINT_STREAM_END;
+ } else if (rec_mode == VOC_REC_DOWNLINK) {
+ cvs_start_record.rec_mode.rx_tap_point =
+ VSS_TAP_POINT_STREAM_END;
+ cvs_start_record.rec_mode.tx_tap_point = VSS_TAP_POINT_NONE;
+ } else if (rec_mode == VOC_REC_BOTH) {
+ cvs_start_record.rec_mode.rx_tap_point =
+ VSS_TAP_POINT_STREAM_END;
+ cvs_start_record.rec_mode.tx_tap_point =
+ VSS_TAP_POINT_STREAM_END;
+ } else {
+ pr_err("%s: Invalid in-call rec_mode %d\n", __func__, rec_mode);
+
+ ret = -EINVAL;
+ goto fail;
+ }
+
+ v->cvs_state = CMD_STATUS_FAIL;
+
+ ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_start_record);
+ if (ret < 0) {
+ pr_err("%s: Error %d sending START_RECORD\n", __func__, ret);
+
+ goto fail;
+ }
+
+ ret = wait_event_timeout(v->cvs_wait,
+ (v->cvs_state == CMD_STATUS_SUCCESS),
+ msecs_to_jiffies(TIMEOUT_MS));
+ if (!ret) {
+ pr_err("%s: wait_event timeout\n", __func__);
+
+ goto fail;
+ }
+
+ return 0;
+
+fail:
+ return ret;
+}
+
+static int voice_cvs_stop_record(struct voice_data *v)
+{
+ int ret = 0;
+ void *apr_cvs = voice_get_apr_cvs(v);
+ u16 cvs_handle = voice_get_cvs_handle(v);
+ struct apr_hdr cvs_stop_record;
+
+ pr_debug("%s: Stop record\n", __func__);
+
+ cvs_stop_record.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+ APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+ cvs_stop_record.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+ sizeof(cvs_stop_record) - APR_HDR_SIZE);
+ cvs_stop_record.src_port = 0;
+ cvs_stop_record.dest_port = cvs_handle;
+ cvs_stop_record.token = 0;
+ cvs_stop_record.opcode = VSS_ISTREAM_CMD_STOP_RECORD;
+
+ v->cvs_state = CMD_STATUS_FAIL;
+
+ ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_stop_record);
+ if (ret < 0) {
+ pr_err("%s: Error %d sending STOP_RECORD\n", __func__, ret);
+
+ goto fail;
+ }
+
+ ret = wait_event_timeout(v->cvs_wait,
+ (v->cvs_state == CMD_STATUS_SUCCESS),
+ msecs_to_jiffies(TIMEOUT_MS));
+ if (!ret) {
+ pr_err("%s: wait_event timeout\n", __func__);
+
+ goto fail;
+ }
+
+ return 0;
+
+fail:
+ return ret;
+}
+
+int voice_start_record(uint32_t rec_mode, uint32_t set)
+{
+ int ret = 0;
+ u16 cvs_handle;
+
+ pr_debug("%s: rec_mode %d, set %d\n", __func__, rec_mode, set);
+
+ mutex_lock(&voice.lock);
+
+ cvs_handle = voice_get_cvs_handle(&voice);
+
+ if (cvs_handle != 0) {
+ if (set)
+ ret = voice_cvs_start_record(&voice, rec_mode);
+ else
+ ret = voice_cvs_stop_record(&voice);
+ } else {
+ /* Cache the value for later. */
+ voice.rec_info.pending = set;
+ voice.rec_info.rec_mode = rec_mode;
+ }
+
+ mutex_unlock(&voice.lock);
+
+ return ret;
+}
+
 static void voice_auddev_cb_function(u32 evt_id,
 			union auddev_evt_data *evt_payload,
 			void *private_data)
@@ -2205,6 +2336,12 @@ static void voice_auddev_cb_function(u32 evt_id,
 					sidetone_cal_data.enable,
 					sidetone_cal_data.gain);
 				v->voc_state = VOC_RUN;
+if (v->rec_info.pending) {
+ voice_cvs_start_record(v,
+ v->rec_info.rec_mode);
+
+v->rec_info.pending = 0;
+}
 
 				/* Start in-call recording if command was
 				 * pending. */
@@ -2908,6 +3045,8 @@ static int __init voice_init(void)
 
 	/* Initialize MVS info. */
 	common.mvs_info.network_type = VSS_NETWORK_ID_DEFAULT;
+	v->rec_info.pending = 0;
+	v->rec_info.rec_mode = VOC_REC_NONE;
 
 	mutex_init(&common.common_lock);
 

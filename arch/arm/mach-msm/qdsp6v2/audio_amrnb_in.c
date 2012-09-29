@@ -29,16 +29,12 @@
 #include <linux/msm_audio_amrnb.h>
 #include <linux/android_pmem.h>
 #include <linux/memory_alloc.h>
-
 #include <mach/iommu.h>
 #include <mach/iommu_domains.h>
 #include <mach/msm_subsystem_map.h>
 #include <mach/msm_adsp.h>
 #include <mach/socinfo.h>
-#include <mach/qdsp5v2/qdsp5audreccmdi.h>
-#include <mach/qdsp5v2/qdsp5audrecmsg.h>
-#include <mach/qdsp5v2/audpreproc.h>
-#include <mach/qdsp5v2/audio_dev_ctl.h>
+#include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/debug_mm.h>
 #include <mach/msm_memtypes.h>
 
@@ -200,56 +196,7 @@ static void amrnb_in_listener(u32 evt_id, union auddev_evt_data *evt_payload,
 	}
 }
 
-/* ------------------- dsp preproc event handler--------------------- */
-static void audpreproc_dsp_event(void *data, unsigned id,  void *msg)
-{
-	struct audio_in *audio = data;
 
-	switch (id) {
-	case AUDPREPROC_ERROR_MSG: {
-		struct audpreproc_err_msg *err_msg = msg;
-
-		MM_ERR("ERROR_MSG: stream id %d err idx %d\n",
-		err_msg->stream_id, err_msg->aud_preproc_err_idx);
-		/* Error case */
-		wake_up(&audio->wait_enable);
-		break;
-	}
-	case AUDPREPROC_CMD_CFG_DONE_MSG: {
-		MM_DBG("CMD_CFG_DONE_MSG \n");
-		break;
-	}
-	case AUDPREPROC_CMD_ENC_CFG_DONE_MSG: {
-		struct audpreproc_cmd_enc_cfg_done_msg *enc_cfg_msg = msg;
-
-		MM_DBG("CMD_ENC_CFG_DONE_MSG: stream id %d enc type \
-			0x%8x\n", enc_cfg_msg->stream_id,
-			enc_cfg_msg->rec_enc_type);
-		/* Encoder enable success */
-		if (enc_cfg_msg->rec_enc_type & ENCODE_ENABLE)
-			audamrnb_in_param_config(audio);
-		else { /* Encoder disable success */
-			audio->running = 0;
-			audamrnb_in_record_config(audio, 0);
-		}
-		break;
-	}
-	case AUDPREPROC_CMD_ENC_PARAM_CFG_DONE_MSG: {
-		MM_DBG("CMD_ENC_PARAM_CFG_DONE_MSG \n");
-		audamrnb_in_mem_config(audio);
-		break;
-	}
-	case AUDPREPROC_AFE_CMD_AUDIO_RECORD_CFG_DONE_MSG: {
-		MM_DBG("AFE_CMD_AUDIO_RECORD_CFG_DONE_MSG \n");
-		wake_up(&audio->wait_enable);
-		break;
-	}
-	default:
-		MM_ERR("Unknown Event id %d\n", id);
-	}
-}
-
-/* ------------------- dsp audrec event handler--------------------- */
 static void audrec_dsp_event(void *data, unsigned id, size_t len,
 			    void (*getevent)(void *ptr, size_t len))
 {

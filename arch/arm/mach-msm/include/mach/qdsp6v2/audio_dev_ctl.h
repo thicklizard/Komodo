@@ -15,12 +15,17 @@
 #include <mach/qdsp5v2/audio_def.h>
 #include <sound/q6afe.h>
 
+
 #define AUDIO_DEV_CTL_MAX_DEV 64
 #define DIR_TX	2
 #define DIR_RX	1
 
 #define DEVICE_IGNORE	0xffff
 #define COPP_IGNORE	0xffffffff
+#define VOICE_STATE_INVALID 0x0
+#define VOICE_STATE_INCALL 0x1
+#define VOICE_STATE_OFFCALL 0x2
+
 #define SESSION_IGNORE 0x0UL
 
 /* 8 concurrent sessions with Q6 possible,  session:0
