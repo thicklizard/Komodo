@@ -1,3 +1,8 @@
+
+
+#pragma GCC diagnostic ignored "-Warray-bounds"
+
+
 /*
  * Copyright (c) 2012, Code Aurora Forum. All rights reserved.
  *
