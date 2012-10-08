@@ -27,6 +27,8 @@
 #include <linux/blktrace_api.h>
 #include <linux/jiffies.h>
 
+#include "blk.h"
+
 /*
  * enum row_queue_prio - Priorities of the ROW queues
  *
@@ -51,9 +53,9 @@ enum row_queue_prio {
 static const bool queue_idling_enabled[] = {
 	true,	/* ROWQ_PRIO_HIGH_READ */
 	true,	/* ROWQ_PRIO_REG_READ */
-	true,	/* ROWQ_PRIO_HIGH_SWRITE */
-	true,	/* ROWQ_PRIO_REG_SWRITE */
-	true,	/* ROWQ_PRIO_REG_WRITE */
+	false,	/* ROWQ_PRIO_HIGH_SWRITE */
+	false,	/* ROWQ_PRIO_REG_SWRITE */
+	false,	/* ROWQ_PRIO_REG_WRITE */
 	false,	/* ROWQ_PRIO_LOW_READ */
 	false,	/* ROWQ_PRIO_LOW_SWRITE */
 };
@@ -268,7 +270,13 @@ static void row_add_request(struct request_queue *q,
 		rqueue->idle_data.idle_trigger_time =
 			jiffies + msecs_to_jiffies(rd->read_idle.freq);
 	}
-	row_log_rowq(rd, rqueue->prio, "added request");
+	if (urgent_queues[rqueue->prio] &&
+	    row_rowq_unserved(rd, rqueue->prio)) {
+		row_log_rowq(rd, rqueue->prio,
+			     "added urgent req curr_queue = %d",
+			     rd->curr_queue);
+	} else
+		row_log_rowq(rd, rqueue->prio, "added request");
 }
 
 /*
