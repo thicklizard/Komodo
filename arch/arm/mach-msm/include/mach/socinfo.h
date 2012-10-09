@@ -243,6 +243,10 @@ static inline int cpu_is_msm8627(void)
 #endif
 }
 
+	static inline int cpu_is_msm8930aa(void)
+{
+	return 0;
+}
 static inline int cpu_is_fsm9xxx(void)
 {
 #ifdef CONFIG_ARCH_FSM9XXX
@@ -265,5 +269,10 @@ static inline int cpu_is_msm9615(void)
 #else
 	return 0;
 #endif
+}
+
+static inline int cpu_is_msm8625(void)
+{
+	return 0;
 }
 #endif

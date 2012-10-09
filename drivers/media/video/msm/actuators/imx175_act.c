@@ -16,9 +16,9 @@
 #include <mach/gpio.h>
 
 #ifdef USE_RAWCHIP_AF
-#define	S5K3H2YX_TOTAL_STEPS_NEAR_TO_FAR			128
+#define	IMX175_TOTAL_STEPS_NEAR_TO_FAR			128
 #else
-#define	S5K3H2YX_TOTAL_STEPS_NEAR_TO_FAR			52
+#define	IMX175_TOTAL_STEPS_NEAR_TO_FAR			52
 #endif
 
 #define REG_VCM_NEW_CODE			0x30F2
@@ -31,8 +31,8 @@
 
 #define DIV_CEIL(x, y) (x/y + (x%y) ? 1 : 0)
 
-DEFINE_MUTEX(s5k3h2yx_act_mutex);
-static struct msm_actuator_ctrl_t s5k3h2yx_act_t;
+DEFINE_MUTEX(imx175_act_mutex);
+static struct msm_actuator_ctrl_t imx175_act_t;
 
 static struct region_params_t g_regions[] = {
 	/* step_bound[0] - macro side boundary
@@ -40,14 +40,14 @@ static struct region_params_t g_regions[] = {
 	 */
 	/* Region 1 */
 	{
-		.step_bound = {S5K3H2YX_TOTAL_STEPS_NEAR_TO_FAR, 0},
+		.step_bound = {IMX175_TOTAL_STEPS_NEAR_TO_FAR, 0},
 		.code_per_step = 2,
 	},
 };
 
 static uint16_t g_scenario[] = {
 	/* MOVE_NEAR and MOVE_FAR dir*/
-	S5K3H2YX_TOTAL_STEPS_NEAR_TO_FAR,
+	IMX175_TOTAL_STEPS_NEAR_TO_FAR,
 };
 
 static struct damping_params_t g_damping[] = {
@@ -67,42 +67,42 @@ static struct damping_t g_damping_params[] = {
 	},
 };
 
-static struct msm_actuator_info *s5k3h2yx_msm_actuator_info;
+static struct msm_actuator_info *imx175_msm_actuator_info;
 
-static int32_t s5k3h2yx_poweron_af(void)
+static int32_t imx175_poweron_af(void)
 {
 	int32_t rc = 0;
 	pr_info("%s enable AF actuator, gpio = %d\n", __func__,
-			s5k3h2yx_msm_actuator_info->vcm_pwd);
+			imx175_msm_actuator_info->vcm_pwd);
 	mdelay(1);
-	rc = gpio_request(s5k3h2yx_msm_actuator_info->vcm_pwd, "s5k3h2yx");
+	rc = gpio_request(imx175_msm_actuator_info->vcm_pwd, "imx175");
 	if (!rc)
-		gpio_direction_output(s5k3h2yx_msm_actuator_info->vcm_pwd, 1);
+		gpio_direction_output(imx175_msm_actuator_info->vcm_pwd, 1);
 	else
 		pr_err("%s: AF PowerON gpio_request failed %d\n", __func__, rc);
-	gpio_free(s5k3h2yx_msm_actuator_info->vcm_pwd);
+	gpio_free(imx175_msm_actuator_info->vcm_pwd);
 	mdelay(1);
 	return rc;
 }
 
-static void s5k3h2yx_poweroff_af(void)
+static void imx175_poweroff_af(void)
 {
 	int32_t rc = 0;
 
 	pr_info("%s disable AF actuator, gpio = %d\n", __func__,
-			s5k3h2yx_msm_actuator_info->vcm_pwd);
+			imx175_msm_actuator_info->vcm_pwd);
 
 	msleep(1);
-	rc = gpio_request(s5k3h2yx_msm_actuator_info->vcm_pwd, "s5k3h2yx");
+	rc = gpio_request(imx175_msm_actuator_info->vcm_pwd, "imx175");
 	if (!rc)
-		gpio_direction_output(s5k3h2yx_msm_actuator_info->vcm_pwd, 0);
+		gpio_direction_output(imx175_msm_actuator_info->vcm_pwd, 0);
 	else
 		pr_err("%s: AF PowerOFF gpio_request failed %d\n", __func__, rc);
-	gpio_free(s5k3h2yx_msm_actuator_info->vcm_pwd);
+	gpio_free(imx175_msm_actuator_info->vcm_pwd);
 	msleep(1);
 }
 
-int32_t s5k3h2yx_msm_actuator_init_table(
+int32_t imx175_msm_actuator_init_table(
 	struct msm_actuator_ctrl_t *a_ctrl)
 {
 	int32_t rc = 0;
@@ -112,7 +112,7 @@ int32_t s5k3h2yx_msm_actuator_init_table(
 	if (a_ctrl->func_tbl.actuator_set_params)
 		a_ctrl->func_tbl.actuator_set_params(a_ctrl);
 
-	if (s5k3h2yx_act_t.step_position_table) {
+	if (imx175_act_t.step_position_table) {
 		LINFO("%s table inited\n", __func__);
 		return rc;
 	}
@@ -128,33 +128,32 @@ int32_t s5k3h2yx_msm_actuator_init_table(
 
 	if (a_ctrl->step_position_table != NULL) {
 		uint16_t i = 0;
-		uint16_t s5k3h2yx_nl_region_boundary1 = 2;
-		uint16_t s5k3h2yx_nl_region_code_per_step1 = 32;
-		uint16_t s5k3h2yx_l_region_code_per_step = 16;
-		uint16_t s5k3h2yx_max_value = 1023;
+		uint16_t imx175_nl_region_boundary1 = 2;
+		uint16_t imx175_nl_region_code_per_step1 = 32;
+		uint16_t imx175_l_region_code_per_step = 16;
+		uint16_t imx175_max_value = 1023;
 
 		a_ctrl->step_position_table[0] = a_ctrl->initial_code;
 		for (i = 1; i <= a_ctrl->set_info.total_steps; i++) {
 #ifdef USE_RAWCHIP_AF
-			if (s5k3h2yx_msm_actuator_info->use_rawchip_af) {
-					a_ctrl->step_position_table[i] =
-						a_ctrl->step_position_table[i-1] + 4;
-			}
+			if (imx175_msm_actuator_info->use_rawchip_af)
+				a_ctrl->step_position_table[i] =
+					a_ctrl->step_position_table[i-1] + 4;
 			else
 #endif
 			{
-			if (i <= s5k3h2yx_nl_region_boundary1) {
+			if (i <= imx175_nl_region_boundary1) {
 				a_ctrl->step_position_table[i] =
 					a_ctrl->step_position_table[i-1]
-					+ s5k3h2yx_nl_region_code_per_step1;
+					+ imx175_nl_region_code_per_step1;
 			} else {
 				a_ctrl->step_position_table[i] =
 					a_ctrl->step_position_table[i-1]
-					+ s5k3h2yx_l_region_code_per_step;
+					+ imx175_l_region_code_per_step;
 			}
 
-			if (a_ctrl->step_position_table[i] > s5k3h2yx_max_value)
-				a_ctrl->step_position_table[i] = s5k3h2yx_max_value;
+			if (a_ctrl->step_position_table[i] > imx175_max_value)
+				a_ctrl->step_position_table[i] = imx175_max_value;
 			}
 		}
 		a_ctrl->curr_step_pos = 0;
@@ -167,7 +166,7 @@ int32_t s5k3h2yx_msm_actuator_init_table(
 	return rc;
 }
 
-int32_t s5k3h2yx_msm_actuator_move_focus(
+int32_t imx175_msm_actuator_move_focus(
 	struct msm_actuator_ctrl_t *a_ctrl,
 	int dir,
 	int32_t num_steps)
@@ -217,17 +216,17 @@ int32_t s5k3h2yx_msm_actuator_move_focus(
 	return rc;
 }
 
-int s5k3h2yx_actuator_af_power_down(void *params)
+int imx175_actuator_af_power_down(void *params)
 {
 	int rc = 0;
 	LINFO("%s called\n", __func__);
 
-	rc = (int) msm_actuator_af_power_down(&s5k3h2yx_act_t);
-	s5k3h2yx_poweroff_af();
+	rc = (int) msm_actuator_af_power_down(&imx175_act_t);
+	imx175_poweroff_af();
 	return rc;
 }
 
-static int32_t s5k3h2yx_wrapper_i2c_write(struct msm_actuator_ctrl_t *a_ctrl,
+static int32_t imx175_wrapper_i2c_write(struct msm_actuator_ctrl_t *a_ctrl,
 	int16_t next_lens_position, void *params)
 {
 	int32_t rc = 0;
@@ -253,7 +252,7 @@ static int32_t s5k3h2yx_wrapper_i2c_write(struct msm_actuator_ctrl_t *a_ctrl,
 	return rc;
 }
 
-int32_t s5k3h2yx_act_write_focus(
+int32_t imx175_act_write_focus(
 	struct msm_actuator_ctrl_t *a_ctrl,
 	uint16_t curr_lens_pos,
 	struct damping_params_t *damping_params,
@@ -282,7 +281,7 @@ int32_t s5k3h2yx_act_write_focus(
 	return rc;
 }
 
-static int32_t s5k3h2yx_act_init_focus(struct msm_actuator_ctrl_t *a_ctrl)
+static int32_t imx175_act_init_focus(struct msm_actuator_ctrl_t *a_ctrl)
 {
 	int32_t rc = 0;
 
@@ -296,40 +295,40 @@ static int32_t s5k3h2yx_act_init_focus(struct msm_actuator_ctrl_t *a_ctrl)
 	return rc;
 }
 
-static const struct i2c_device_id s5k3h2yx_act_i2c_id[] = {
-	{"s5k3h2yx_act", (kernel_ulong_t)&s5k3h2yx_act_t},
+static const struct i2c_device_id imx175_act_i2c_id[] = {
+	{"imx175_act", (kernel_ulong_t)&imx175_act_t},
 	{ }
 };
 
-static int s5k3h2yx_act_config(
+static int imx175_act_config(
 	void __user *argp)
 {
 	LINFO("%s called\n", __func__);
-	return (int) msm_actuator_config(&s5k3h2yx_act_t,
-		s5k3h2yx_msm_actuator_info, argp); /* HTC Angie 20111212 - Rawchip */
+	return (int) msm_actuator_config(&imx175_act_t,
+		imx175_msm_actuator_info, argp); /* HTC Angie 20111212 - Rawchip */
 }
 
-static int s5k3h2yx_i2c_add_driver_table(
+static int imx175_i2c_add_driver_table(
 	void)
 {
 	int32_t rc = 0;
 
 	LINFO("%s called\n", __func__);
 
-	rc = s5k3h2yx_poweron_af();
+	rc = imx175_poweron_af();
 	if (rc < 0) {
 		pr_err("%s power on failed\n", __func__);
 		return (int) rc;
 	}
 
-	s5k3h2yx_act_t.step_position_table = NULL;
-	rc = s5k3h2yx_act_t.func_tbl.actuator_init_table(&s5k3h2yx_act_t);
+	imx175_act_t.step_position_table = NULL;
+	rc = imx175_act_t.func_tbl.actuator_init_table(&imx175_act_t);
 	if (rc < 0) {
 		pr_err("%s init table failed\n", __func__);
 		return (int) rc;
 	}
 
-	rc = msm_camera_i2c_write(&(s5k3h2yx_act_t.i2c_client),
+	rc = msm_camera_i2c_write(&(imx175_act_t.i2c_client),
 		0x0001, 0x01,
 		MSM_CAMERA_I2C_BYTE_DATA);
 	if (rc < 0) {
@@ -340,50 +339,50 @@ static int s5k3h2yx_i2c_add_driver_table(
 	return (int) rc;
 }
 
-static struct i2c_driver s5k3h2yx_act_i2c_driver = {
-	.id_table = s5k3h2yx_act_i2c_id,
+static struct i2c_driver imx175_act_i2c_driver = {
+	.id_table = imx175_act_i2c_id,
 	.probe  = msm_actuator_i2c_probe,
-	.remove = __exit_p(s5k3h2yx_act_i2c_remove),
+	.remove = __exit_p(imx175_act_i2c_remove),
 	.driver = {
-		.name = "s5k3h2yx_act",
+		.name = "imx175_act",
 	},
 };
 
-static int __init s5k3h2yx_i2c_add_driver(
+static int __init imx175_i2c_add_driver(
 	void)
 {
 	LINFO("%s called\n", __func__);
-	return i2c_add_driver(s5k3h2yx_act_t.i2c_driver);
+	return i2c_add_driver(imx175_act_t.i2c_driver);
 }
 
-static struct v4l2_subdev_core_ops s5k3h2yx_act_subdev_core_ops;
+static struct v4l2_subdev_core_ops imx175_act_subdev_core_ops;
 
-static struct v4l2_subdev_ops s5k3h2yx_act_subdev_ops = {
-	.core = &s5k3h2yx_act_subdev_core_ops,
+static struct v4l2_subdev_ops imx175_act_subdev_ops = {
+	.core = &imx175_act_subdev_core_ops,
 };
 
-static int32_t s5k3h2yx_act_create_subdevice(
+static int32_t imx175_act_create_subdevice(
 	void *board_info,
 	void *sdev)
 {
 	LINFO("%s called\n", __func__);
 
-	s5k3h2yx_msm_actuator_info = (struct msm_actuator_info *)board_info;
+	imx175_msm_actuator_info = (struct msm_actuator_info *)board_info;
 
-	return (int) msm_actuator_create_subdevice(&s5k3h2yx_act_t,
-		s5k3h2yx_msm_actuator_info->board_info,
+	return (int) msm_actuator_create_subdevice(&imx175_act_t,
+		imx175_msm_actuator_info->board_info,
 		(struct v4l2_subdev *)sdev);
 }
 
-static struct msm_actuator_ctrl_t s5k3h2yx_act_t = {
-	.i2c_driver = &s5k3h2yx_act_i2c_driver,
+static struct msm_actuator_ctrl_t imx175_act_t = {
+	.i2c_driver = &imx175_act_i2c_driver,
 	.i2c_addr = REG_VCM_I2C_ADDR,
-	.act_v4l2_subdev_ops = &s5k3h2yx_act_subdev_ops,
+	.act_v4l2_subdev_ops = &imx175_act_subdev_ops,
 	.actuator_ext_ctrl = {
-		.a_init_table = s5k3h2yx_i2c_add_driver_table,
-		.a_power_down = s5k3h2yx_actuator_af_power_down,
-		.a_create_subdevice = s5k3h2yx_act_create_subdevice,
-		.a_config = s5k3h2yx_act_config,
+		.a_init_table = imx175_i2c_add_driver_table,
+		.a_power_down = imx175_actuator_af_power_down,
+		.a_create_subdevice = imx175_act_create_subdevice,
+		.a_config = imx175_act_config,
 	},
 
 	.i2c_client = {
@@ -391,7 +390,7 @@ static struct msm_actuator_ctrl_t s5k3h2yx_act_t = {
 	},
 
 	.set_info = {
-		.total_steps = S5K3H2YX_TOTAL_STEPS_NEAR_TO_FAR,
+		.total_steps = IMX175_TOTAL_STEPS_NEAR_TO_FAR,
 		.gross_steps = 3,	/*[TBD]*/
 		.fine_steps = 1,	/*[TBD]*/
 	},
@@ -399,15 +398,15 @@ static struct msm_actuator_ctrl_t s5k3h2yx_act_t = {
 	.curr_step_pos = 0,
 	.curr_region_index = 0,
 	.initial_code = 0,	/*[TBD]*/
-	.actuator_mutex = &s5k3h2yx_act_mutex,
+	.actuator_mutex = &imx175_act_mutex,
 
 	.func_tbl = {
-		.actuator_init_table = s5k3h2yx_msm_actuator_init_table,
-		.actuator_move_focus = s5k3h2yx_msm_actuator_move_focus,
-		.actuator_write_focus = s5k3h2yx_act_write_focus,
+		.actuator_init_table = imx175_msm_actuator_init_table,
+		.actuator_move_focus = imx175_msm_actuator_move_focus,
+		.actuator_write_focus = imx175_act_write_focus,
 		.actuator_set_default_focus = msm_actuator_set_default_focus,
-		.actuator_init_focus = s5k3h2yx_act_init_focus,
-		.actuator_i2c_write = s5k3h2yx_wrapper_i2c_write,
+		.actuator_init_focus = imx175_act_init_focus,
+		.actuator_i2c_write = imx175_wrapper_i2c_write,
 	},
 
 	.get_info = {	/*[TBD]*/
@@ -436,6 +435,6 @@ static struct msm_actuator_ctrl_t s5k3h2yx_act_t = {
 	.damping[MOVE_FAR] = g_damping_params,
 };
 
-subsys_initcall(s5k3h2yx_i2c_add_driver);
-MODULE_DESCRIPTION("S5K3H2YX actuator");
+subsys_initcall(imx175_i2c_add_driver);
+MODULE_DESCRIPTION("IMX175 actuator");
 MODULE_LICENSE("GPL v2");
