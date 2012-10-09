@@ -136,9 +136,10 @@ int32_t s5k3h2yx_msm_actuator_init_table(
 		a_ctrl->step_position_table[0] = a_ctrl->initial_code;
 		for (i = 1; i <= a_ctrl->set_info.total_steps; i++) {
 #ifdef USE_RAWCHIP_AF
-			if (s5k3h2yx_msm_actuator_info->use_rawchip_af)
-				a_ctrl->step_position_table[i] =
-					a_ctrl->step_position_table[i-1] + 8;
+			if (s5k3h2yx_msm_actuator_info->use_rawchip_af) {
+					a_ctrl->step_position_table[i] =
+						a_ctrl->step_position_table[i-1] + 4;
+			}
 			else
 #endif
 			{
