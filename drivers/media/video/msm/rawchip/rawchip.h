@@ -43,8 +43,6 @@
 
 #include <media/linux_rawchip.h>
 #include "Yushan_API.h"
-#include "Yushan_Platform_Specific.h"
-#include "Yushan_HTC_Functions.h"
 
 struct rawchip_ctrl {
 	struct msm_camera_rawchip_info *pdata;
@@ -52,12 +50,9 @@ struct rawchip_ctrl {
 
 	struct mutex raw_ioctl_lock;
 	int rawchip_init;
-	atomic_t check_intr0;
-	atomic_t check_intr1;
 };
 
 struct rawchip_sensor_data {
-	const char *sensor_name;
 	uint8_t datatype;
 	uint8_t lane_cnt;
 	uint32_t pixel_clk;

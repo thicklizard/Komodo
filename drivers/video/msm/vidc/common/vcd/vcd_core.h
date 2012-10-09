@@ -191,7 +191,6 @@ struct vcd_clnt_ctxt {
 	u32 frm_p_units;
 	u32 reqd_perf_lvl;
 	u32 time_resoln;
-	u32 time_frame_delta;
 
 	struct vcd_buffer_pool in_buf_pool;
 	struct vcd_buffer_pool out_buf_pool;
@@ -211,8 +210,6 @@ struct vcd_clnt_ctxt {
 	u32 vcd_enable_ion;
 	struct vcd_clnt_ctxt *next;
 	u32 meta_mode;
-	int perf_set_by_client;
-	int secure;
 };
 
 #define VCD_BUFFERPOOL_INUSE_DECREMENT(val) \

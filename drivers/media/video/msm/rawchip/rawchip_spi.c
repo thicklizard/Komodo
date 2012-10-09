@@ -178,9 +178,8 @@ static void yushan_spi_complete(void *arg)
 static int yushan_spi_transaction(struct spi_message *msg)
 {
 	DECLARE_COMPLETION_ONSTACK(yushan_done);
-	/* HTC_START (klockwork issue)*/
-	static int status = 0;
-	/* HTC_END */
+	int status;
+
 	msg->complete = yushan_spi_complete;
 	msg->context = &yushan_done;
 
@@ -295,7 +294,7 @@ static int32_t Yushan_spi_write_table(
 		yushan_spi_write_addr[2] = (uwIndex+transferedIndex) & 0x00ff;
 
 		for (i = 0; (i < yushan_MAX_ALLOCATE && transferedIndex < uwCount); i++, transferedIndex++)
-			yushan_spi_write_addr[i+3] = *(pData+transferedIndex);
+			yushan_spi_write_addr[i+3] = *(pData+2+4*transferedIndex);
 
 		tx_addr.tx_buf = yushan_spi_write_addr;
 		tx_addr.len = i+3;

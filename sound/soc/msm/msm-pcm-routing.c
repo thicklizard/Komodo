@@ -31,13 +31,6 @@
 #include "msm-pcm-routing.h"
 #include "qdsp6/q6voice.h"
 
-//htc audio ++
-#undef pr_info
-#undef pr_err
-#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
-//htc audio --
-
 struct msm_pcm_routing_bdai_data {
 	u16 port_id; /* AFE port ID */
 	u8 active; /* track if this backend is enabled */
@@ -53,6 +46,7 @@ struct msm_pcm_routing_bdai_data {
 static struct mutex routing_lock;
 
 static int fm_switch_enable;
+
 #define INT_RX_VOL_MAX_STEPS 0x2000
 #define INT_RX_VOL_GAIN 0x2000
 
@@ -1024,23 +1018,7 @@ static const struct snd_kcontrol_new auxpcm_rx_port_mixer_controls[] = {
 	SOC_SINGLE_EXT("SLIM_0_TX", MSM_BACKEND_DAI_AUXPCM_RX,
 	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_port_mixer,
 	msm_routing_put_port_mixer),
-//hTC+++: AFE routing from BT SCO TX to AUXPCM RX
-	SOC_SINGLE_EXT("INT_SCO_TX", MSM_BACKEND_DAI_AUXPCM_RX,
-	MSM_BACKEND_DAI_INT_BT_SCO_TX, 1, 0, msm_routing_get_port_mixer,
-	msm_routing_put_port_mixer),
-//hTC---
 };
-
-//hTC+++: AFE routing to BT SCO RX 
-static const struct snd_kcontrol_new btsco_0_rx_port_mixer_controls[] = {
-	SOC_SINGLE_EXT("SLIM_0_TX", MSM_BACKEND_DAI_INT_BT_SCO_RX,
-	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_port_mixer,
-	msm_routing_put_port_mixer),
-	SOC_SINGLE_EXT("AUX_PCM_UL_TX", MSM_BACKEND_DAI_INT_BT_SCO_RX,
-	MSM_BACKEND_DAI_AUXPCM_TX, 1, 0, msm_routing_get_port_mixer,
-	msm_routing_put_port_mixer),
-};
-//hTC---
 
 static const struct snd_kcontrol_new fm_switch_mixer_controls =
 	SOC_SINGLE_EXT("Switch", SND_SOC_NOPM,
@@ -1368,11 +1346,6 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_MIXER("AUXPCM_RX Port Mixer",
 	SND_SOC_NOPM, 0, 0, auxpcm_rx_port_mixer_controls,
 	ARRAY_SIZE(auxpcm_rx_port_mixer_controls)),
-//hTC+++
-	SND_SOC_DAPM_MIXER("INTERNAL_BT_SCO_RX Port Mixer",
-	SND_SOC_NOPM, 0, 0, btsco_0_rx_port_mixer_controls,
-	ARRAY_SIZE(btsco_0_rx_port_mixer_controls)),
-//hTC---
 };
 
 static const struct snd_soc_dapm_route intercon[] = {
@@ -1504,16 +1477,7 @@ static const struct snd_soc_dapm_route intercon[] = {
 
 	{"AUXPCM_RX Port Mixer", "AUX_PCM_UL_TX", "AUX_PCM_TX"},
 	{"AUXPCM_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
-//hTC+++: AFE routing to BT SCO RX 
-	{"AUXPCM_RX Port Mixer", "INT_SCO_TX", "INT_BT_SCO_TX"},
-//hTC---
 	{"AUX_PCM_RX", NULL, "AUXPCM_RX Port Mixer"},
-
-//hTC+++: AFE routing to BT SCO RX 
-	{"INTERNAL_BT_SCO_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
-	{"INTERNAL_BT_SCO_RX Port Mixer", "AUX_PCM_UL_TX", "AUX_PCM_TX"},
-	{"INT_BT_SCO_RX", NULL, "INTERNAL_BT_SCO_RX Port Mixer"},
-//hTC---
 };
 
 static int msm_pcm_routing_hw_params(struct snd_pcm_substream *substream,
@@ -1737,7 +1701,7 @@ static struct platform_driver msm_routing_pcm_driver = {
 int msm_routing_check_backend_enabled(int fedai_id)
 {
 	int i;
-	if (fedai_id > MSM_FRONTEND_DAI_MM_MAX_ID) {
+	if (fedai_id >= MSM_FRONTEND_DAI_MM_MAX_ID) {
 		/* bad ID assigned in machine driver */
 		pr_err("%s: bad MM ID\n", __func__);
 		return 0;
