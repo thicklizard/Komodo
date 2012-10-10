@@ -177,7 +177,6 @@ struct camera_flash_cfg {
 	int (*camera_flash)(int level);
 	uint16_t low_temp_limit;
 	uint16_t low_cap_limit;
-	uint16_t low_cap_limit_dual;
 	uint8_t postpone_led_mode;
 	struct camera_flash_info *flash_info;	/* Andrew_Cheng linear led 20111205 */
 };
@@ -525,11 +524,9 @@ struct msm_vidc_platform_data {
 	u32 enable_ion;
 	int disable_dmx;
 	int disable_fullhd;
-	u32 cp_enabled;
 #ifdef CONFIG_MSM_BUS_SCALING
 	struct msm_bus_scale_pdata *vidc_bus_client_pdata;
 #endif
-	int cont_mode_dpb_count;
 };
 
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
@@ -637,7 +634,7 @@ struct t_mhl_status_notifier{
 int mhl_detect_register_notifier(struct t_mhl_status_notifier *);
 static LIST_HEAD(g_lh_mhl_detect_notifier_list);
 
-#ifdef CONFIG_USB_OTG
+#if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
 /***********************************
 Direction: cable detect drvier -> usb driver
  ***********************************/
@@ -672,5 +669,4 @@ extern int emmc_partition_read_proc(char *page, char **start, off_t off,
 
 extern int dying_processors_read_proc(char *page, char **start, off_t off,
 				int count, int *eof, void *data);
-extern int get_partition_num_by_name(char *name);
 #endif

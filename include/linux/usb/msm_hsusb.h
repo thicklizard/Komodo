@@ -272,7 +272,7 @@ struct msm_otg {
 	enum usb_connect_type connect_type;
 	int connect_type_ready;
 	struct workqueue_struct *usb_wq;
-	struct delayed_work ac_detect_work;
+	struct timer_list ac_detect_timer;
 	int ac_detect_count;
 
 	struct msm_xo_voter *xo_handle; /*handle to vote for PXO buffer*/

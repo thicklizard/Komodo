@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -83,8 +83,6 @@
 #define DDL_MAX_NUM_REF_FOR_P_FRAME             2
 
 #define DDL_MAX_NUM_IN_INPUTFRAME_POOL          (DDL_MAX_NUM_OF_B_FRAME + 1)
-
-#define MDP_MIN_TILE_HEIGHT			96
 
 enum ddl_mem_area {
 	DDL_FW_MEM	= 0x0,
@@ -227,7 +225,6 @@ struct ddl_batch_frame_data {
 			[DDL_MAX_NUM_BFRS_FOR_SLICE_BATCH];
 	u32 num_output_frames;
 	u32 out_frm_next_frmindex;
-	u32  first_output_frame_tag;
 };
 struct ddl_encoder_data{
 	struct ddl_codec_data_hdr   hdr;
@@ -253,7 +250,6 @@ struct ddl_encoder_data{
 	struct vcd_property_intra_refresh_mb_number  intra_refresh;
 	struct vcd_property_buffer_format  buf_format;
 	struct vcd_property_buffer_format  recon_buf_format;
-	struct vcd_property_sps_pps_for_idr_enable sps_pps;
 	struct ddl_buf_addr  seq_header;
 	struct vcd_buffer_requirement  input_buf_req;
 	struct vcd_buffer_requirement  output_buf_req;
@@ -319,8 +315,6 @@ struct ddl_decoder_data {
 	u32  cont_mode;
 	u32  reconfig_detected;
 	u32  dmx_disable;
-	int avg_dec_time;
-	int dec_time_sum;
 };
 union ddl_codec_data{
 	struct ddl_codec_data_hdr  hdr;
@@ -469,8 +463,6 @@ void ddl_decoder_chroma_dpb_change(struct ddl_client_context *ddl);
 u32  ddl_check_reconfig(struct ddl_client_context *ddl);
 void ddl_handle_reconfig(u32 res_change, struct ddl_client_context *ddl);
 void ddl_fill_dec_desc_buffer(struct ddl_client_context *ddl);
-void ddl_set_vidc_timeout(struct ddl_client_context *ddl);
-
 
 #ifdef DDL_BUF_LOG
 void ddl_list_buffers(struct ddl_client_context *ddl);
@@ -485,8 +477,4 @@ u32 ddl_fw_init(struct ddl_buf_addr *dram_base);
 void ddl_get_fw_info(const unsigned char **fw_array_addr,
 	unsigned int *fw_size);
 void ddl_fw_release(void);
-int ddl_vidc_decode_get_avg_time(struct ddl_client_context *ddl);
-void ddl_vidc_decode_reset_avg_time(struct ddl_client_context *ddl);
-void ddl_calc_core_proc_time(const char *func_name, u32 index,
-		struct ddl_client_context *ddl);
 #endif

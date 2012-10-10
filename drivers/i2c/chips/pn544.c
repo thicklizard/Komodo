@@ -15,9 +15,7 @@
 #include <linux/gpio.h>
 #include <linux/miscdevice.h>
 #include <linux/spinlock.h>
-#include <linux/wakelock.h>
 #include <linux/pn544.h>
-#include <mach/board_htc.h>
 
 int is_debug = 0;
 
@@ -44,7 +42,6 @@ struct pn544_dev	{
 	struct device		*pn_dev;
 	wait_queue_head_t	read_wq;
 	struct mutex		read_mutex;
-	struct wake_lock io_wake_lock;
 	struct i2c_client	*client;
 	struct miscdevice	pn544_device;
 	unsigned int		irq_gpio;
@@ -55,7 +52,6 @@ struct pn544_dev	{
 	unsigned int 		firm_gpio;
 	void (*gpio_init) (void);
 	unsigned int 		ven_enable;
-	int boot_mode;
 };
 
 struct pn544_dev *pn_info;
@@ -159,7 +155,6 @@ static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
 	pn544_disable_irq(pn544_dev);
 
 	/* Wake up waiting readers */
-	wake_lock_timeout(&pn544_dev ->io_wake_lock, IO_WAKE_LOCK_TIMEOUT);
 	wake_up(&pn544_dev->read_wq);
 
 	return IRQ_HANDLED;
@@ -211,7 +206,6 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 	i = 0;
 
 	D("%s: start count = %u\n", __func__, count);
-	wake_lock_timeout(&pni ->io_wake_lock, IO_WAKE_LOCK_TIMEOUT);
 
 	if (count > MAX_BUFFER_SIZE) {
 		E("%s : count =%d> MAX_BUFFER_SIZE\n", __func__, count);
@@ -283,14 +277,15 @@ fail:
 static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 		size_t count, loff_t *offset)
 {
-	struct pn544_dev *pni = pn_info;
+	struct pn544_dev  *pn544_dev;
 	char buffer[MAX_BUFFER_SIZE];
 	int ret;
 	int i;
 	i = 0;
 
 	D("%s: start count = %u\n", __func__, count);
-	wake_lock_timeout(&pni ->io_wake_lock, IO_WAKE_LOCK_TIMEOUT);
+
+	pn544_dev = filp->private_data;
 
 	if (count > MAX_BUFFER_SIZE) {
 		E("%s : count =%d> MAX_BUFFER_SIZE\n", __func__, count);
@@ -612,7 +607,7 @@ static int pn544_probe(struct i2c_client *client,
 	pn_info = pni;
 
 	if (platform_data->gpio_init != NULL) {
-		I("%s: gpio_init\n", __func__);
+		D("%s: gpio_init\n", __func__);
 		platform_data->gpio_init();
 	}
 
@@ -622,7 +617,6 @@ static int pn544_probe(struct i2c_client *client,
 	pni->client   = client;
 	pni->gpio_init = platform_data->gpio_init;
 	pni->ven_enable = !platform_data->ven_isinvert;
-	pni->boot_mode = board_mfg_mode();
 
 	/*pn544_PowerOnSeq();*/
 
@@ -630,9 +624,6 @@ static int pn544_probe(struct i2c_client *client,
 	init_waitqueue_head(&pni->read_wq);
 	mutex_init(&pni->read_mutex);
 	spin_lock_init(&pni->irq_enabled_lock);
-
-	I("%s: init io_wake_lock\n", __func__);
-	wake_lock_init(&pni->io_wake_lock, WAKE_LOCK_SUSPEND, PN544_I2C_NAME);
 
 	pni->pn544_device.minor = MISC_DYNAMIC_MINOR;
 	pni->pn544_device.name = "pn544";
@@ -692,11 +683,8 @@ static int pn544_probe(struct i2c_client *client,
 		goto err_create_pn_file;
 	}
 
-	/*Disable NFC if it is not off-mode charging*/
-	if (pni->boot_mode != 5) {
-		I("%s: disable NFC by default (bootmode = %d)\n", __func__, pni->boot_mode);
-		pn544_Disable();
-	}
+	I("%s: disable NFC by default\n", __func__);
+	pn544_Disable();
 
 	return 0;
 
@@ -709,7 +697,6 @@ err_request_irq_failed:
 	misc_deregister(&pni->pn544_device);
 err_misc_register:
 	mutex_destroy(&pni->read_mutex);
-	wake_lock_destroy(&pni->io_wake_lock);
 	kfree(pni);
 	pn_info = NULL;
 	gpio_free(platform_data->firm_gpio);
@@ -731,7 +718,6 @@ static int pn544_remove(struct i2c_client *client)
 	free_irq(client->irq, pn544_dev);
 	misc_deregister(&pn544_dev->pn544_device);
 	mutex_destroy(&pn544_dev->read_mutex);
-	wake_lock_destroy(&pn544_dev->io_wake_lock);
 	gpio_free(pn544_dev->irq_gpio);
 	gpio_free(pn544_dev->ven_gpio);
 	gpio_free(pn544_dev->firm_gpio);

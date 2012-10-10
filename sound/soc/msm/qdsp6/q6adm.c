@@ -19,17 +19,11 @@
 
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/qdsp6v2/audio_acdb.h>
-#include <mach/qdsp6v2/rtac.h>
 
+#include <mach/qdsp6v2/rtac.h>
+#include <mach/qdsp6v2/q6afe.h>
 #include <sound/apr_audio.h>
 #include <sound/q6afe.h>
-
-//htc audio ++
-#undef pr_info
-#undef pr_err
-#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
-//htc audio --
 
 #define TIMEOUT_MS 1000
 #define AUDIO_RX 0x0
@@ -286,10 +280,10 @@ static void send_adm_cal(int port_id, int path)
 	get_audproc_cal(acdb_path, &aud_cal);
 
 	/* map & cache buffers used */
-	if (aud_cal.cal_size > 0 &&
-	((mem_addr_audproc[acdb_path].cal_paddr != aud_cal.cal_paddr) ||
-	(mem_addr_audproc[acdb_path].cal_size < aud_cal.cal_size &&
-	 mem_addr_audproc[acdb_path].cal_paddr == aud_cal.cal_paddr))) {
+	if (((mem_addr_audproc[acdb_path].cal_paddr != aud_cal.cal_paddr)  &&
+		(aud_cal.cal_size > 0)) ||
+		(aud_cal.cal_size > mem_addr_audproc[acdb_path].cal_size)) {
+
 		if (mem_addr_audproc[acdb_path].cal_paddr != 0)
 			adm_memory_unmap_regions(
 				&mem_addr_audproc[acdb_path].cal_paddr,
@@ -316,10 +310,9 @@ static void send_adm_cal(int port_id, int path)
 	get_audvol_cal(acdb_path, &aud_cal);
 
 	/* map & cache buffers used */
-	if (aud_cal.cal_size > 0 &&
-		((mem_addr_audvol[acdb_path].cal_paddr != aud_cal.cal_paddr) ||
-		(mem_addr_audvol[acdb_path].cal_size < aud_cal.cal_size &&
-		 mem_addr_audvol[acdb_path].cal_paddr == aud_cal.cal_paddr))) {
+	if (((mem_addr_audvol[acdb_path].cal_paddr != aud_cal.cal_paddr)  &&
+		(aud_cal.cal_size > 0))  ||
+		(aud_cal.cal_size > mem_addr_audvol[acdb_path].cal_size)) {
 		if (mem_addr_audvol[acdb_path].cal_paddr != 0)
 			adm_memory_unmap_regions(
 				&mem_addr_audvol[acdb_path].cal_paddr,
@@ -361,11 +354,6 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology)
 
 	index = afe_get_port_index(port_id);
 	pr_info("%s: Port ID %d, index %d\n", __func__, port_id, index);
-
-        if(index < 0 || index >= AFE_MAX_PORTS) {
-            pr_err("%s:invalid port idx %d port_id %d\n",__func__,index,port_id);
-            return -EINVAL;
-        }
 
 	if (this_adm.apr == NULL) {
 		this_adm.apr = apr_register("ADSP", "ADM", adm_callback,
@@ -714,11 +702,6 @@ int adm_close(int port_id)
 		return -EINVAL;
 
 	pr_info("%s port_id=%d index %d\n", __func__, port_id, index);
-
-        if(index < 0 || index >= AFE_MAX_PORTS) {
-            pr_err("%s:invalid port idx %d port_id %d\n",__func__,index,port_id);
-            return -EINVAL;
-        }
 
 	if (!(atomic_read(&this_adm.copp_cnt[index]))) {
 		pr_err("%s: copp count for port[%d]is 0\n", __func__, port_id);

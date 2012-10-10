@@ -137,6 +137,7 @@ static inline int current_has_network(void)
  */
 static struct list_head inetsw[SOCK_MAX];
 static DEFINE_SPINLOCK(inetsw_lock);
+
 struct ipv4_config ipv4_config;
 EXPORT_SYMBOL(ipv4_config);
 
@@ -554,6 +555,7 @@ int inet_dgram_connect(struct socket *sock, struct sockaddr * uaddr,
 		       int addr_len, int flags)
 {
 	struct sock *sk = sock->sk;
+
 	if (addr_len < sizeof(uaddr->sa_family))
 		return -EINVAL;
 	if (uaddr->sa_family == AF_UNSPEC)
@@ -592,8 +594,6 @@ static long inet_wait_for_connect(struct sock *sk, long timeo)
  *	Connect to a remote host. There is regrettably still a little
  *	TCP 'magic' in here.
  */
-int add_or_remove_port(struct sock *sk, int add_or_remove);	/* SSD_RIL: Garbage_Filter_TCP */
-
 int inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 			int addr_len, int flags)
 {
@@ -631,12 +631,8 @@ int inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 		err = sk->sk_prot->connect(sk, uaddr, addr_len);
 		if (err < 0)
 			goto out;
-		
+
 		sock->state = SS_CONNECTING;
-		/* ++SSD_RIL: Garbage_Filter_TCP */
-		if (sk != NULL)
-			add_or_remove_port(sk, 1);
-		/* --SSD_RIL: Garbage_Filter_TCP */
 
 		/* Just entered SS_CONNECTING state; the only
 		 * difference is that return value in non-blocking
@@ -749,12 +745,14 @@ int inet_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 		 size_t size)
 {
 	struct sock *sk = sock->sk;
+
 	sock_rps_record_flow(sk);
 
 	/* We may need to bind the socket. */
 	if (!inet_sk(sk)->inet_num && !sk->sk_prot->no_autobind &&
 	    inet_autobind(sk))
 		return -EAGAIN;
+
 	return sk->sk_prot->sendmsg(iocb, sk, msg, size);
 }
 EXPORT_SYMBOL(inet_sendmsg);
@@ -783,19 +781,13 @@ int inet_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 	struct sock *sk = sock->sk;
 	int addr_len = 0;
 	int err;
-//++SSD_RIL:	   
-	unsigned long long t_pre;
-//--SSD_RIL: 
+
 	sock_rps_record_flow(sk);
-//++SSD_RIL:
-       t_pre=sched_clock();
-//--SSD_RIL:
+
 	err = sk->sk_prot->recvmsg(iocb, sk, msg, size, flags & MSG_DONTWAIT,
 				   flags & ~MSG_DONTWAIT, &addr_len);
 	if (err >= 0)
-	{
 		msg->msg_namelen = addr_len;
-	}
 	return err;
 }
 EXPORT_SYMBOL(inet_recvmsg);

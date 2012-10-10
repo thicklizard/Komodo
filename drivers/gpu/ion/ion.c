@@ -107,8 +107,6 @@ struct ion_handle {
 	unsigned int iommu_map_cnt;
 };
 
-static void ion_iommu_release(struct kref *kref);
-
 static int ion_validate_buffer_flags(struct ion_buffer *buffer,
 					unsigned long flags)
 {
@@ -225,14 +223,6 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	buffer->heap = heap;
 	kref_init(&buffer->ref);
 
-	//HTC_START Jason Huang 20120530 --- If the buffer will be allocated from ION CP MM heap, force it 1M-alignment.
-	if (heap->id == ION_CP_MM_HEAP_ID)
-	{
-		len = (len + SZ_1M - 1) & ~(SZ_1M - 1);
-		align = SZ_1M;
-	}
-	//HTC_END
-
 	ret = heap->ops->allocate(heap, buffer, len, align, flags);
 	if (ret) {
 		kfree(buffer);
@@ -245,44 +235,11 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	return buffer;
 }
 
-/**
- * Check for delayed IOMMU unmapping. Also unmap any outstanding
- * mappings which would otherwise have been leaked.
- */
-static void ion_iommu_delayed_unmap(struct ion_buffer *buffer)
-{
-	struct ion_iommu_map *iommu_map;
-	struct rb_node *node;
-	const struct rb_root *rb = &(buffer->iommu_maps);
-	unsigned long ref_count;
-	unsigned int delayed_unmap;
-
-	mutex_lock(&buffer->lock);
-
-	while ((node = rb_first(rb)) != 0) {
-		iommu_map = rb_entry(node, struct ion_iommu_map, node);
-		ref_count = atomic_read(&iommu_map->ref.refcount);
-		delayed_unmap = iommu_map->flags & ION_IOMMU_UNMAP_DELAYED;
-
-		if ((delayed_unmap && ref_count > 1) || !delayed_unmap) {
-			pr_err("%s: Virtual memory address leak in domain %u, partition %u\n",
-				__func__, iommu_map->domain_info[DI_DOMAIN_NUM],
-				iommu_map->domain_info[DI_PARTITION_NUM]);
-		}
-		/* set ref count to 1 to force release */
-		kref_init(&iommu_map->ref);
-		kref_put(&iommu_map->ref, ion_iommu_release);
-	}
-
-	mutex_unlock(&buffer->lock);
-}
-
 static void ion_buffer_destroy(struct kref *kref)
 {
 	struct ion_buffer *buffer = container_of(kref, struct ion_buffer, ref);
 	struct ion_device *dev = buffer->dev;
 
-	ion_iommu_delayed_unmap(buffer);
 	buffer->heap->ops->free(buffer);
 	mutex_lock(&dev->lock);
 	rb_erase(&buffer->node, &dev->buffers);
@@ -605,7 +562,7 @@ out:
 }
 EXPORT_SYMBOL(ion_map_kernel);
 
-static struct ion_iommu_map *__ion_iommu_map(struct ion_buffer *buffer,
+static int __ion_iommu_map(struct ion_buffer *buffer,
 		int domain_num, int partition_num, unsigned long align,
 		unsigned long iova_length, unsigned long flags,
 		unsigned long *iova)
@@ -616,7 +573,7 @@ static struct ion_iommu_map *__ion_iommu_map(struct ion_buffer *buffer,
 	data = kmalloc(sizeof(*data), GFP_ATOMIC);
 
 	if (!data)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	data->buffer = buffer;
 	iommu_map_domain(data) = domain_num;
@@ -637,29 +594,24 @@ static struct ion_iommu_map *__ion_iommu_map(struct ion_buffer *buffer,
 
 	ion_iommu_add(buffer, data);
 
-	return data;
+	return 0;
 
 out:
 	msm_free_iova_address(data->iova_addr, domain_num, partition_num,
 				buffer->size);
 	kfree(data);
-	return ERR_PTR(ret);
+	return ret;
 }
 
 int ion_map_iommu(struct ion_client *client, struct ion_handle *handle,
 			int domain_num, int partition_num, unsigned long align,
 			unsigned long iova_length, unsigned long *iova,
 			unsigned long *buffer_size,
-			unsigned long flags, unsigned long iommu_flags)
+			unsigned long flags)
 {
 	struct ion_buffer *buffer;
 	struct ion_iommu_map *iommu_map;
 	int ret = 0;
-
-	if (ION_IS_CACHED(flags)) {
-		pr_err("%s: Cannot map iommu as cached.\n", __func__);
-		return -EINVAL;
-	}
 
 	mutex_lock(&client->lock);
 	if (!ion_handle_validate(client, handle)) {
@@ -679,6 +631,11 @@ int ion_map_iommu(struct ion_client *client, struct ion_handle *handle,
 		goto out;
 	}
 
+	if (ion_validate_buffer_flags(buffer, flags)) {
+		ret = -EEXIST;
+		goto out;
+	}
+
 	/*
 	 * If clients don't want a custom iova length, just use whatever
 	 * the buffer size is
@@ -686,22 +643,12 @@ int ion_map_iommu(struct ion_client *client, struct ion_handle *handle,
 	if (!iova_length)
 		iova_length = buffer->size;
 
-	/*HTC_START Jason Huang 20120530 --- Buffers from ION CP MM heap are 1M-alignment,
-	                                     clients may input expected mapped virtual address
-	                                     length which is shorter than the buffer size.*/
-	/*
 	if (buffer->size > iova_length) {
 		pr_debug("%s: iova length %lx is not at least buffer size"
 			" %x\n", __func__, iova_length, buffer->size);
 		ret = -EINVAL;
 		goto out;
 	}
-	*/
-	if (buffer->size > iova_length)
-	{
-		iova_length = buffer->size;
-	}
-	//HTC_END
 
 	if (buffer->size & ~PAGE_MASK) {
 		pr_debug("%s: buffer size %x is not aligned to %lx", __func__,
@@ -718,30 +665,17 @@ int ion_map_iommu(struct ion_client *client, struct ion_handle *handle,
 	}
 
 	iommu_map = ion_iommu_lookup(buffer, domain_num, partition_num);
-	_ion_map(&buffer->iommu_map_cnt, &handle->iommu_map_cnt);
-	if (!iommu_map) {
-		iommu_map = __ion_iommu_map(buffer, domain_num, partition_num,
-					    align, iova_length, flags, iova);
-		if (IS_ERR_OR_NULL(iommu_map)) {
+	if (_ion_map(&buffer->iommu_map_cnt, &handle->iommu_map_cnt) ||
+		!iommu_map) {
+		ret = __ion_iommu_map(buffer, domain_num, partition_num, align,
+					iova_length, flags, iova);
+		if (ret < 0)
 			_ion_unmap(&buffer->iommu_map_cnt,
 				   &handle->iommu_map_cnt);
-		} else {
-			iommu_map->flags = iommu_flags;
-
-			if (iommu_map->flags & ION_IOMMU_UNMAP_DELAYED)
-				kref_get(&iommu_map->ref);
-		}
 	} else {
-		if (iommu_map->flags != iommu_flags) {
-			pr_err("%s: handle %p is already mapped with iommu flags %lx, trying to map with flags %lx\n",
-				__func__, handle,
-				iommu_map->flags, iommu_flags);
-			_ion_unmap(&buffer->iommu_map_cnt,
-				   &handle->iommu_map_cnt);
-			ret = -EINVAL;
-		} else if (iommu_map->mapped_size != iova_length) {
+		if (iommu_map->mapped_size != iova_length) {
 			pr_err("%s: handle %p is already mapped with length"
-					" %x, trying to map with length %lx\n",
+				" %x, trying to map with length %lx\n",
 				__func__, handle, iommu_map->mapped_size,
 				iova_length);
 			_ion_unmap(&buffer->iommu_map_cnt,
@@ -948,7 +882,7 @@ out:
 	return ret;
 }
 
-int ion_do_cache_op(struct ion_client *client, struct ion_handle *handle,
+static int ion_do_cache_op(struct ion_client *client, struct ion_handle *handle,
 			void *uaddr, unsigned long offset, unsigned long len,
 			unsigned int cmd)
 {

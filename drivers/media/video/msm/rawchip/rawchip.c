@@ -43,8 +43,6 @@ static irqreturn_t yushan_irq_handler(int irq, void *dev_id){
 
 	unsigned long flags;
 
-	disable_irq_nosync(MSM_GPIO_TO_INT(rawchipCtrl->pdata->rawchip_intr0));
-
 	//smp_mb();
 	spin_lock_irqsave(&yushan_int.yushan_spin_lock,flags);
 	//CDBG("[CAM] %s detect INT0, interrupt:%d \n",__func__, interrupt);
@@ -67,8 +65,6 @@ static irqreturn_t yushan_irq_handler2(int irq, void *dev_id){
 
 	unsigned long flags;
 
-	disable_irq_nosync(MSM_GPIO_TO_INT(rawchipCtrl->pdata->rawchip_intr1));
-
 	spin_lock_irqsave(&yushan_int.yushan_spin_lock,flags);
 	atomic_set(&interrupt2, 1);
 	CDBG("[CAM] %s after detect INT1, interrupt:%d \n", __func__, atomic_read(&interrupt2));
@@ -84,7 +80,6 @@ int rawchip_set_size(struct rawchip_sensor_data data)
 	struct msm_camera_rawchip_info *pdata = rawchipCtrl->pdata;
 	struct rawchip_sensor_init_data rawchip_init_data;
 	Yushan_New_Context_Config_t sYushanNewContextConfig;
-	Yushan_ImageChar_t	sImageChar_context;
 	int bit_cnt = 1;
 	static uint32_t pre_pixel_clk = 0;
 	uint8_t orientation;
@@ -112,7 +107,6 @@ int rawchip_set_size(struct rawchip_sensor_data data)
 			bit_cnt = 12;
 			break;
 		}
-		rawchip_init_data.sensor_name = data.sensor_name;
 		rawchip_init_data.spi_clk = pdata->rawchip_spi_freq;
 		rawchip_init_data.ext_clk = pdata->rawchip_mclk_freq;
 		rawchip_init_data.lane_cnt = data.lane_cnt;
@@ -163,19 +157,18 @@ int rawchip_set_size(struct rawchip_sensor_data data)
 	sYushanNewContextConfig.uwActiveFrameLength = data.height;
 	sYushanNewContextConfig.bSelectStillVfMode = YUSHAN_FRAME_FORMAT_VF_MODE;
 	sYushanNewContextConfig.uwPixelFormat = 0x0A0A;
+	sYushanNewContextConfig.orientation = orientation;
+	sYushanNewContextConfig.uwXAddrStart = data.x_addr_start;
+	sYushanNewContextConfig.uwYAddrStart = data.y_addr_start;
+	sYushanNewContextConfig.uwXAddrEnd = data.x_addr_end;
+	sYushanNewContextConfig.uwYAddrEnd = data.y_addr_end;
+	sYushanNewContextConfig.uwXEvenInc = data.x_even_inc;
+	sYushanNewContextConfig.uwXOddInc = data.x_odd_inc;
+	sYushanNewContextConfig.uwYEvenInc = data.y_even_inc;
+	sYushanNewContextConfig.uwYOddInc = data.y_odd_inc;
+	sYushanNewContextConfig.bBinning = data.binning_rawchip;
 
-	sImageChar_context.bImageOrientation = orientation;
-	sImageChar_context.uwXAddrStart = data.x_addr_start;
-	sImageChar_context.uwYAddrStart = data.y_addr_start;
-	sImageChar_context.uwXAddrEnd= data.x_addr_end;
-	sImageChar_context.uwYAddrEnd= data.y_addr_end;
-	sImageChar_context.uwXEvenInc = data.x_even_inc;
-	sImageChar_context.uwXOddInc = data.x_odd_inc;
-	sImageChar_context.uwYEvenInc = data.y_even_inc;
-	sImageChar_context.uwYOddInc = data.y_odd_inc;
-	sImageChar_context.bBinning = data.binning_rawchip;
-
-	Yushan_ContextUpdate_Wrapper(sYushanNewContextConfig, sImageChar_context);
+	Yushan_ContextUpdate_Wrapper(&sYushanNewContextConfig);
 	return 0;
 }
 
@@ -245,8 +238,6 @@ static int rawchip_get_interrupt(struct rawchip_ctrl *raw_dev, void __user *arg)
 	struct rawchip_stats_event_ctrl se;
 	int timeout;
 	uint8_t interrupt_type;
-	uint8_t interrupt0_type = 0;
-	uint8_t interrupt1_type = 0;
 
 	CDBG("%s\n", __func__);
 
@@ -261,19 +252,7 @@ static int rawchip_get_interrupt(struct rawchip_ctrl *raw_dev, void __user *arg)
 
 	CDBG("[CAM] %s: timeout %d\n", __func__, timeout);
 
-	if (atomic_read(&rawchipCtrl->check_intr0)) {
-		interrupt0_type = Yushan_parse_interrupt(INTERRUPT_PAD_0);
-		atomic_set(&rawchipCtrl->check_intr0, 0);
-	}
-	if (atomic_read(&rawchipCtrl->check_intr1)) {
-		interrupt1_type = Yushan_parse_interrupt(INTERRUPT_PAD_1);
-		atomic_set(&rawchipCtrl->check_intr1, 0);
-	}
-	interrupt_type = interrupt0_type | interrupt1_type;
-	if (interrupt_type & RAWCHIP_INT_TYPE_ERROR) {
-		Yushan_Status_Snapshot();
-		Yushan_dump_Dxo();
-	}
+	interrupt_type = Yushan_parse_interrupt();
 	se.type = 10;
 	se.length = sizeof(interrupt_type);
 	if (copy_to_user((void *)(se.data),
@@ -298,7 +277,7 @@ static int rawchip_get_af_status(struct rawchip_ctrl *raw_dev, void __user *arg)
 	int rc = 0;
 	struct rawchip_stats_event_ctrl se;
 	int timeout;
-	rawchip_af_stats af_stats;
+    Yushan_AF_Stats_t sYushanAFStats[5];
 	CDBG("%s\n", __func__);
 
 	if (copy_from_user(&se, arg,
@@ -311,7 +290,7 @@ static int rawchip_get_af_status(struct rawchip_ctrl *raw_dev, void __user *arg)
 	timeout = (int)se.timeout_ms;
 
 	CDBG("[CAM] %s: timeout %d\n", __func__, timeout);
-	rc = Yushan_get_AFSU(&af_stats);
+    rc = Yushan_get_AFSU(sYushanAFStats);
 
 	if (rc < 0) {
 		pr_err("[CAM] %s, Yushan_get_AFSU failed\n", __func__);
@@ -319,10 +298,10 @@ static int rawchip_get_af_status(struct rawchip_ctrl *raw_dev, void __user *arg)
 		goto end;
 	}
 	se.type = 5;
-	se.length = sizeof(af_stats);
+    se.length = sizeof(sYushanAFStats[0])*5;
 
 	if (copy_to_user((void *)(se.data),
-			&af_stats,
+			sYushanAFStats,
 			se.length)) {
 			pr_err("[CAM] %s, ERR_COPY_TO_USER 1\n", __func__);
 		rc = -EFAULT;
@@ -381,7 +360,7 @@ end:
 }
 static int rawchip_set_dxo_prc_afStrategy(struct rawchip_ctrl *raw_dev, void __user *arg)
 {
-	int rc = 0;
+
 	struct rawchip_stats_event_ctrl se;
 	uint8_t* afStrategy;
 
@@ -410,12 +389,7 @@ static int rawchip_set_dxo_prc_afStrategy(struct rawchip_ctrl *raw_dev, void __u
 
 	CDBG("%s afStrategy = %d\n", __func__,*afStrategy);
 
-	rc = Yushan_Set_AF_Strategy(*afStrategy);
-	if (rc < 0) {
-		pr_err("[CAM] %s, Yushan_Set_AF_Strategy failed\n", __func__);
-		kfree(afStrategy);
-		return -EFAULT;
-	}
+	Yushan_Set_AF_Strategy(afStrategy);
 
 	kfree(afStrategy);
 	return 0;
@@ -447,14 +421,8 @@ static int rawchip_update_aec_awb_params(struct rawchip_ctrl *raw_dev, void __us
 		return -EFAULT;
 	}
 
-#ifdef CONFIG_MACH_JET
-	CDBG("%s gain=%d dig_gain=%d exp=%d\n", __func__,
-		update_aec_awb_params->aec_params.gain, update_aec_awb_params->aec_params.dig_gain,
-		update_aec_awb_params->aec_params.exp);
-#else
 	CDBG("%s gain=%d exp=%d\n", __func__,
 		update_aec_awb_params->aec_params.gain, update_aec_awb_params->aec_params.exp);
-#endif
 	CDBG("%s rg_ratio=%d bg_ratio=%d\n", __func__,
 		update_aec_awb_params->awb_params.rg_ratio, update_aec_awb_params->awb_params.bg_ratio);
 
@@ -656,11 +624,11 @@ void rawchip_release(void)
 
 	pr_info("[CAM] %s\n", __func__);
 
+	rawchip_power_down(pdata);
+
 	CDBG("[CAM] rawchip free irq");
 	free_irq(MSM_GPIO_TO_INT(pdata->rawchip_intr0), 0);
 	free_irq(MSM_GPIO_TO_INT(pdata->rawchip_intr1), 0);
-
-	rawchip_power_down(pdata);
 }
 
 int rawchip_open_init(void)
@@ -694,14 +662,14 @@ open_read_id_retry:
 
 	/*create irq*/
 	rc = request_irq(MSM_GPIO_TO_INT(pdata->rawchip_intr0), yushan_irq_handler,
-		IRQF_TRIGGER_HIGH, "yushan_irq", 0);
+		IRQF_TRIGGER_RISING, "yushan_irq", 0);
 	if (rc < 0) {
 		pr_err("request irq intr0 failed\n");
 		goto open_init_failed;
 	}
 
 	rc = request_irq(MSM_GPIO_TO_INT(pdata->rawchip_intr1), yushan_irq_handler2,
-		IRQF_TRIGGER_HIGH, "yushan_irq2", 0);
+		IRQF_TRIGGER_RISING, "yushan_irq2", 0);
 	if (rc < 0) {
 		pr_err("request irq intr1 failed\n");
 		free_irq(MSM_GPIO_TO_INT(pdata->rawchip_intr0), 0);
@@ -709,8 +677,6 @@ open_read_id_retry:
 	}
 
 	rawchipCtrl->rawchip_init = 0;
-	atomic_set(&rawchipCtrl->check_intr0, 0);
-	atomic_set(&rawchipCtrl->check_intr1, 0);
 	rawchip_intr0 = pdata->rawchip_intr0;
 	rawchip_intr1 = pdata->rawchip_intr1;
 
@@ -794,14 +760,9 @@ static unsigned int rawchip_fops_poll(struct file *filp,
 	poll_wait(filp, &yushan_int.yushan_wait, pll_table);
 
 	spin_lock_irqsave(&yushan_int.yushan_spin_lock, flags);
-	if (atomic_read(&interrupt)) {
+	if (atomic_read(&interrupt) || atomic_read(&interrupt2)) {
 		atomic_set(&interrupt, 0);
-		atomic_set(&rawchipCtrl->check_intr0, 1);
-		rc = POLLIN | POLLRDNORM;
-	}
-	if (atomic_read(&interrupt2)) {
 		atomic_set(&interrupt2, 0);
-		atomic_set(&rawchipCtrl->check_intr1, 1);
 		rc = POLLIN | POLLRDNORM;
 	}
 	spin_unlock_irqrestore(&yushan_int.yushan_spin_lock, flags);

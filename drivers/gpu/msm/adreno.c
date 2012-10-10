@@ -961,7 +961,7 @@ static int adreno_suspend_context(struct kgsl_device *device)
 	return status;
 }
 
-struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
+const struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
 						unsigned int pt_base,
 						unsigned int gpuaddr,
 						unsigned int size)
@@ -1032,7 +1032,7 @@ struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
 uint8_t *adreno_convertaddr(struct kgsl_device *device, unsigned int pt_base,
 			    unsigned int gpuaddr, unsigned int size)
 {
-	struct kgsl_memdesc *memdesc;
+	const struct kgsl_memdesc *memdesc;
 
 	memdesc = adreno_find_region(device, pt_base, gpuaddr, size);
 
@@ -1306,13 +1306,6 @@ static void adreno_power_stats(struct kgsl_device *device,
 		stats->busy_time = adreno_ticks_to_us(reg, device->pwrctrl.
 				pwrlevels[device->pwrctrl.active_pwrlevel].
 				gpu_freq);
- stats->busy_time = (stats->busy_time > stats->total_time) ? stats->total_time : stats->busy_time;
-device->gputime.total = device->gputime.total + stats->total_time;
-device->gputime.busy = device->gputime.busy + stats->busy_time;
-device->gputime_in_state[device->pwrctrl.active_pwrlevel].total
-= device->gputime_in_state[device->pwrctrl.active_pwrlevel].total + stats->total_time;
- device->gputime_in_state[device->pwrctrl.active_pwrlevel].busy
-= device->gputime_in_state[device->pwrctrl.active_pwrlevel].busy + stats->busy_time;
 
 		adreno_regwrite(device,
 			REG_CP_PERFMON_CNTL,
@@ -1321,11 +1314,6 @@ device->gputime_in_state[device->pwrctrl.active_pwrlevel].total
 	} else {
 		stats->total_time = 0;
 		stats->busy_time = 0;
-	adreno_regwrite(device,
-	REG_CP_PERFMON_CNTL,
-	 REG_PERF_MODE_CNT |
-	REG_PERF_STATE_RESET);
-	
 		pwr->time = ktime_to_us(ktime_get());
 	}
 

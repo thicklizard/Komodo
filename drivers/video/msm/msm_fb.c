@@ -102,8 +102,6 @@ static u32 msm_fb_pseudo_palette[16] = {
 	0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff
 };
 
-static struct ion_client *iclient;
-
 u32 msm_fb_debug_enabled;
 /* Setting msm_fb_msg_level to 8 prints out ALL messages */
 u32 msm_fb_msg_level = 7;
@@ -131,47 +129,15 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd);
 static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg);
 static int msm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma);
-
 #if defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR)
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-
-#define NUM_ALLOC 3
-#define ION_CLIENT_FB_PJT "msmfb_projector"
-static struct ion_client *usb_pjt_client = NULL;
-static struct ion_handle *usb_pjt_handle[NUM_ALLOC] = { NULL };
-static void *virt_addr[NUM_ALLOC] = {0};
-static int mem_fd[NUM_ALLOC] = {0};
-static struct msmfb_usb_projector_info usb_pjt_info = {0, 0};
-static int mem_mapped = 0;
-
-char *get_fb_addr(void)
-{
-	int i;
-
-	if (!usb_pjt_info.latest_offset) {
-		printk(KERN_WARNING "%s: wrong address sent via ioctl?\n", __func__);
-		return 0;
-	}
-
-	usb_pjt_info.usb_offset = usb_pjt_info.latest_offset;
-
-	for (i=0; i<NUM_ALLOC; i++)
-		if (mem_fd[i] == usb_pjt_info.usb_offset)
-			return (char *)virt_addr[i];
-
-	printk(KERN_ERR "%s: <FATAL> Impossible to be here.\n", __func__);
-	return 0;
-}
-#else
 struct msmfb_usb_projector_info usb_pjt_info;
-static char *fb_addr_base = 0;
+static char *fb1_addr_base = 0;
 
-char *get_fb_addr(void)
+char *get_fb1_addr(void)
 {
 	usb_pjt_info.usb_offset = usb_pjt_info.latest_offset;
-	return fb_addr_base + usb_pjt_info.usb_offset;
+	return fb1_addr_base + usb_pjt_info.usb_offset;
 }
-#endif
 #endif
 
 #ifdef MSM_FB_ENABLE_DBGFS
@@ -209,6 +175,7 @@ void msm_fb_debugfs_file_create(struct dentry *root, const char *name,
 	msm_fb_debugfs_file[msm_fb_debugfs_file_index++] =
 	    debugfs_create_u32(name, S_IRUGO | S_IWUSR, root, var);
 }
+#endif
 
 #if (defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
 static DEFINE_SPINLOCK(fb_data_lock);
@@ -231,6 +198,18 @@ int msmfb_get_fb_area(void)
     area = msm_fb_data.msmfb_area;
     spin_unlock_irqrestore(&fb_data_lock, flags);
     return area;
+}
+
+#if 0
+static void msmfb_set_var(unsigned char *addr, int area)
+{
+    unsigned long flags;
+
+    spin_lock_irqsave(&fb_data_lock, flags);
+    msm_fb_data.fb_addr = addr;
+    msm_fb_data.msmfb_area = area;
+    spin_unlock_irqrestore(&fb_data_lock, flags);
+
 }
 #endif
 #endif
@@ -527,12 +506,6 @@ static int msm_fb_probe(struct platform_device *pdev)
 			     (int)fbram_phys, (int)fbram);
 		wake_lock_init(&idlelock, WAKE_LOCK_IDLE, "display_mdp_idle");
 
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-		iclient = msm_ion_client_create(-1, pdev->name);
-#else
-		iclient = NULL;
-#endif
-
 		msm_fb_resource_initialized = 1;
 		return 0;
 	}
@@ -625,10 +598,10 @@ static int msm_fb_remove(struct platform_device *pdev)
 
 	msm_fb_remove_sysfs(pdev);
 
+	pm_runtime_disable(mfd->fbi->dev);
+
 	if (!mfd)
 		return -ENODEV;
-
-	pm_runtime_disable(mfd->fbi->dev);
 
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
@@ -1295,9 +1268,6 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	struct fb_var_screeninfo *var;
 	int *id;
 	int fbram_offset;
-	static int subsys_id[2] = {MSM_SUBSYSTEM_DISPLAY,
-		MSM_SUBSYSTEM_ROTATOR};
-	unsigned int flags = MSM_SUBSYSTEM_MAP_IOVA;
 
 	/*
 	 * fb info initialization
@@ -1540,26 +1510,13 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	fbi->fix.smem_start = (unsigned long)fbram_phys;
 
 #if defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR)
-#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
-	/* use FB1 */
-	if (mfd->fb_page == 1) fb_addr_base = fbram;
-#endif
+	if (mfd->fb_page == 1) fb1_addr_base = fbram;
 #endif
 
 #if 0//(defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
 	if (mfd->index == 0)
 		msmfb_set_var(fbi->screen_base, 0);
 #endif
-
-	mfd->map_buffer = msm_subsystem_map_buffer(
-		fbi->fix.smem_start, fbi->fix.smem_len,
-		flags, subsys_id, 2);
-	if (mfd->map_buffer) {
-		pr_debug("%s(): buf 0x%lx, mfd->map_buffer->iova[0] 0x%lx\n"
-			"mfd->map_buffer->iova[1] 0x%lx", __func__,
-			fbi->fix.smem_start, mfd->map_buffer->iova[0],
-			mfd->map_buffer->iova[1]);
-	}
 
 	memset(fbi->screen_base, 0x0, fix->smem_len);
 
@@ -3092,7 +3049,6 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 		hasWakeLock = true;
 	}
 	ret = mdp4_overlay_play(info, &req);
-
 #if defined (CONFIG_MSM_AUTOBL_ENABLE)
 	if (pdata->autobl_enable) {
 		pdata->autobl_enable(auto_bkl_status, mfd);
@@ -3724,67 +3680,8 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			return ret;
 		break;
 	case MSMFB_SET_USB_PROJECTOR_INFO:
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	{
-		int i;
-		ret = copy_from_user(&tmp_info, argp, sizeof(tmp_info));
-		if (!tmp_info.latest_offset) {
-			/* ION memory in user space has been freed */
-			usb_pjt_info.latest_offset = 0;
-			mem_mapped = 0;
-			for (i=0; i<NUM_ALLOC; i++) {
-				if (usb_pjt_client && usb_pjt_handle[i]) {
-					ion_unmap_kernel(usb_pjt_client, usb_pjt_handle[i]);
-					usb_pjt_handle[i] = NULL;
-				}
-				mem_fd[i] = 0;
-			}
-		} else {
-			if (mem_mapped >= NUM_ALLOC) {
-				/* the memory space user space is referring to */
-				usb_pjt_info.latest_offset = tmp_info.latest_offset;
-				break;
-			}
-			/* get the memroy space user space is referring to */
-			for (i=0; i<NUM_ALLOC; i++) {
-				unsigned long ionflag;
-				if (mem_fd[i]) {
-					usb_pjt_info.latest_offset = tmp_info.latest_offset;
-					if (mem_fd[i] == tmp_info.latest_offset) {
-						MSM_FB_ERR("fd %d just received again.\n", mem_fd[i]);
-						break;
-					} else
-						continue;
-				}
-				if (!usb_pjt_client) {
-					MSM_FB_ERR("No ION client created.\n");
-					break;
-				}
-				usb_pjt_handle[i] = ion_import_fd(usb_pjt_client, tmp_info.latest_offset);
-				if (!usb_pjt_handle[i]) {
-					MSM_FB_ERR("Failed to get ION handle, client %p, fd = %d\n",
-						usb_pjt_client, tmp_info.latest_offset);
-					break;
-				}
-				ret = ion_handle_get_flags(usb_pjt_client, usb_pjt_handle[i], &ionflag);
-				if (ret) {
-					MSM_FB_ERR("Failed to get ION flag, client %p, handle %p, fd = %d\n",
-						usb_pjt_client, usb_pjt_handle[i], tmp_info.latest_offset);
-					break;
-				}
-				virt_addr[i] = ion_map_kernel(usb_pjt_client, usb_pjt_handle[i], ionflag);
-				mem_fd[i] = tmp_info.latest_offset;
-				usb_pjt_info.latest_offset = tmp_info.latest_offset;
-				MSM_FB_INFO("%s: fd = %d, virt %p\n", __func__, mem_fd[i], virt_addr[i]);
-				mem_mapped++;
-				break;
-			}
-		}
-	}
-#else
 		ret = copy_from_user(&tmp_info, argp, sizeof(tmp_info));
 		usb_pjt_info.latest_offset = tmp_info.latest_offset;
-#endif
 		if (ret)
 			return ret;
 		break;
@@ -3930,7 +3827,11 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 	mfd->fb_page = fb_num;
 	mfd->index = fbi_list_index;
 	mfd->mdp_fb_page_protection = MDP_FB_PAGE_PROTECTION_WRITECOMBINE;
-	mfd->iclient = iclient;
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+	mfd->iclient = msm_ion_client_create(-1, pdev->name);
+#else
+	mfd->iclient = NULL;
+#endif
 	/* link to the latest pdev */
 	mfd->pdev = this_dev;
 
@@ -3953,32 +3854,19 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 }
 EXPORT_SYMBOL(msm_fb_add_device);
 
-int get_fb_phys_info(unsigned long *start, unsigned long *len, int fb_num,
-	int subsys_id)
+int get_fb_phys_info(unsigned long *start, unsigned long *len, int fb_num)
 {
 	struct fb_info *info;
-	struct msm_fb_data_type *mfd;
 
-	if (fb_num >= MAX_FBI_LIST ||
-		(subsys_id != DISPLAY_SUBSYSTEM_ID &&
-		 subsys_id != ROTATOR_SUBSYSTEM_ID)) {
-		pr_err("%s(): Invalid parameters\n", __func__);
+	if (fb_num >= MAX_FBI_LIST)
 		return -1;
-	}
 
 	info = fbi_list[fb_num];
-	if (!info) {
-		pr_err("%s(): info is NULL\n", __func__);
+	if (!info)
 		return -1;
-	}
 
-	mfd = (struct msm_fb_data_type *)info->par;
-	if (mfd->map_buffer)
-		*start = mfd->map_buffer->iova[subsys_id];
-	else
-		*start = info->fix.smem_start;
+	*start = info->fix.smem_start;
 	*len = info->fix.smem_len;
-
 	return 0;
 }
 EXPORT_SYMBOL(get_fb_phys_info);
@@ -3989,13 +3877,6 @@ int __init msm_fb_init(void)
 
 	if (msm_fb_register_driver())
 		return rc;
-
-#if defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR)
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	usb_pjt_client = msm_ion_client_create(-1, ION_CLIENT_FB_PJT);
-#endif
-#endif
-
 
 #ifdef MSM_FB_ENABLE_DBGFS
 	{

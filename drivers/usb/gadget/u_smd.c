@@ -49,7 +49,11 @@ struct smd_port_info {
 
 struct smd_port_info smd_pi[SMD_N_PORTS] = {
 	{
+#ifndef CONFIG_USB_ANDROID_SERIAL_CT_PROJECTS
 		.name = "DS",
+#else
+		.name = "DATA4",
+#endif
 	},
 	{
 		.name = "UNUSED",
@@ -245,7 +249,7 @@ static void gsmd_rx_push(struct work_struct *w)
 			char		*packet = req->buf;
 			unsigned	size = req->actual;
 			unsigned	n;
-			unsigned	count;
+			int		count;
 
 			n = port->n_read;
 			if (n) {
