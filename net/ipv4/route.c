@@ -1280,6 +1280,9 @@ void ip_rt_redirect(__be32 old_gw, __be32 daddr, __be32 new_gw,
 		return;
 
 	net = dev_net(dev);
+	/* ignore ICMP redirect for different SUBNET Gateway*/
+	if (!inet_addr_onlink(in_dev, new_gw, old_gw))
+		goto reject_redirect;
 	if (new_gw == old_gw || !IN_DEV_RX_REDIRECTS(in_dev) ||
 	    ipv4_is_multicast(new_gw) || ipv4_is_lbcast(new_gw) ||
 	    ipv4_is_zeronet(new_gw))
@@ -1617,8 +1620,14 @@ static struct dst_entry *ipv4_dst_check(struct dst_entry *dst, u32 cookie)
 {
 	struct rtable *rt = (struct rtable *) dst;
 
+    if (rt == NULL) {
+        printk(KERN_WARNING "rt is NULL in %s!\n", __func__);
+        return NULL;
+    }
+
 	if (rt_is_expired(rt))
 		return NULL;
+
 	if (rt->rt_peer_genid != rt_peer_genid()) {
 		struct inet_peer *peer;
 
@@ -2212,8 +2221,8 @@ local_input:
 		rth->dst.error= -err;
 		rth->rt_flags 	&= ~RTCF_LOCAL;
 	}
-	hash = rt_hash(daddr, saddr, fl4.flowi4_iif, rt_genid(net));
-	rth = rt_intern_hash(hash, rth, skb, fl4.flowi4_iif);
+	hash = rt_hash(daddr, saddr, rth->rt_iif, rt_genid(net));
+	rth = rt_intern_hash(hash, rth, skb, rth->rt_iif);
 	err = 0;
 	if (IS_ERR(rth))
 		err = PTR_ERR(rth);

@@ -290,6 +290,8 @@ int kgsl_device_snapshot(struct kgsl_device *device, int hang)
 	KGSL_DRV_ERR(device,"snapshot created at va %p pa %x size %d\n",
 			device->snapshot, pdata->snapshot_address,
 			device->snapshot_size);
+	if (hang)
+		sysfs_notify(&device->snapshot_kobj, NULL, "timestamp");
 	return 0;
 }
 EXPORT_SYMBOL(kgsl_device_snapshot);

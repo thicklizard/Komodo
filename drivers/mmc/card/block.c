@@ -278,7 +278,7 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	struct mmc_data data = {0};
 	struct mmc_request mrq = {0};
 	struct scatterlist sg;
-	int err;
+	int err = 0;
 
 	/*
 	 * The caller must have CAP_SYS_RAWIO, and must be calling this on the
@@ -713,7 +713,9 @@ static int mmc_blk_issue_discard_rq(struct mmc_queue *mq, struct request *req)
 	from = blk_rq_pos(req);
 	nr = blk_rq_sectors(req);
 
-	if (mmc_can_trim(card))
+	if (mmc_can_discard(card))
+		arg = MMC_DISCARD_ARG;
+	else if (mmc_can_trim(card))
 		arg = MMC_TRIM_ARG;
 	else
 		arg = MMC_ERASE_ARG;
@@ -753,12 +755,17 @@ static int mmc_blk_issue_secdiscard_rq(struct mmc_queue *mq,
 	from = blk_rq_pos(req);
 	nr = blk_rq_sectors(req);
 
+	/* eMMC will be corrupted if secure-trim and secure-erase are
+	   adopted for Samsung 27 nm eMMC. Therefore, replace secure-trim
+	   and secure-erase args with trim and erase args respectively. */
 	if (mmc_can_trim(card) && !mmc_erase_group_aligned(card, from, nr))
-		arg = MMC_SECURE_TRIM1_ARG;
+		/* arg = MMC_SECURE_TRIM1_ARG; */
+		arg = MMC_TRIM_ARG;
 	else
-		arg = MMC_SECURE_ERASE_ARG;
+		/* arg = MMC_SECURE_ERASE_ARG; */
+		arg = MMC_ERASE_ARG;
 
-	if (card->quirks & MMC_QUIRK_INAND_CMD38) {
+	/* if (card->quirks & MMC_QUIRK_INAND_CMD38) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 INAND_CMD38_ARG_EXT_CSD,
 				 arg == MMC_SECURE_TRIM1_ARG ?
@@ -767,9 +774,9 @@ static int mmc_blk_issue_secdiscard_rq(struct mmc_queue *mq,
 				 0);
 		if (err)
 			goto out;
-	}
+	} */
 	err = mmc_erase(card, from, nr, arg);
-	if (!err && arg == MMC_SECURE_TRIM1_ARG) {
+	/* if (!err && arg == MMC_SECURE_TRIM1_ARG) {
 		if (card->quirks & MMC_QUIRK_INAND_CMD38) {
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					 INAND_CMD38_ARG_EXT_CSD,
@@ -779,7 +786,7 @@ static int mmc_blk_issue_secdiscard_rq(struct mmc_queue *mq,
 				goto out;
 		}
 		err = mmc_erase(card, from, nr, MMC_SECURE_TRIM2_ARG);
-	}
+	} */
 out:
 	spin_lock_irq(&md->lock);
 	__blk_end_request(req, err, blk_rq_bytes(req));
@@ -1249,6 +1256,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 	int err;
 	u32 status;
 	int  no_ready = 0;
+	ktime_t start, diff;
 
 	/*
 	 * Reliable writes are used to implement Forced Unit Access and
@@ -1370,11 +1378,18 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 			brq.data.sg_len = i;
 		}
 
+		start = ktime_get();
 		mmc_queue_bounce_pre(mq);
 
 		mmc_wait_for_req(card->host, &brq.mrq);
 
 		mmc_queue_bounce_post(mq);
+		diff = ktime_sub(ktime_get(), start);
+		if (ktime_to_ms(diff) > 3000)
+			printk(KERN_INFO "%s:finish cmd%d. start sector %u, numSector %u, time=%lldms\n",
+				mmc_hostname(card->host), brq.cmd.opcode,
+				brq.cmd.arg , blk_rq_sectors(req) , ktime_to_ms(diff));
+
 
 		/*
 		 * sbc.error indicates a problem with the set block count
@@ -1460,7 +1475,14 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 				 */
 			} while (!(status & R1_READY_FOR_DATA) ||
 				 (R1_CURRENT_STATE(status) == R1_STATE_PRG));
+
+			diff = ktime_sub(ktime_get(), start);
+			if (ktime_to_ms(diff) > 3000)
+				printk(KERN_INFO "%s:end request. cmd%d, start sector %u, numSector %u, time=%lldms\n",
+						mmc_hostname(card->host), brq.cmd.opcode,
+						brq.cmd.arg , blk_rq_sectors(req) , ktime_to_ms(diff));
 		}
+
 		if (no_ready && reinit_retry) {
 			reinit_retry = 0;
 			pr_info("%s: card status %#x \n", req->rq_disk->disk_name, status);
@@ -2109,6 +2131,7 @@ static int mmc_blk_probe(struct mmc_card *card)
 		if (mmc_add_disk(part_md))
 			goto out;
 	}
+	card->mmcblk_dev = disk_to_dev(md->disk);
 	return 0;
 
  out:

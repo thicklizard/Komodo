@@ -597,7 +597,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 	}
 
 	pr_debug("diag: %d %d %d", cmd_code, subsys_id, subsys_cmd_code);
-	for (i = 0; i < diag_max_registration; i++) {
+	for (i = 0; i < diag_max_reg; i++) {
 		entry = driver->table[i];
 		if (entry.process_id != NO_PROCESS) {
 			if (entry.cmd_code == cmd_code && entry.subsys_id ==
@@ -1033,9 +1033,9 @@ int diagfwd_connect(void)
 	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 	queue_work(driver->diag_wq, &(driver->diag_read_smd_wcnss_work));
 	/* Poll SMD CNTL channels to check for data */
-	queue_work(driver->diag_wq, &(driver->diag_read_smd_cntl_work));
-	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_cntl_work));
-	queue_work(driver->diag_wq, &(driver->diag_read_smd_wcnss_cntl_work));
+	diag_smd_cntl_notify(NULL, SMD_EVENT_DATA);
+	diag_smd_qdsp_cntl_notify(NULL, SMD_EVENT_DATA);
+	diag_smd_wcnss_cntl_notify(NULL, SMD_EVENT_DATA);
 	/* Poll USB channel to check for data*/
 	queue_work(driver->diag_wq, &(driver->diag_read_work));
 #ifdef CONFIG_DIAG_SDIO_PIPE
@@ -1369,7 +1369,7 @@ void diagfwd_init(void)
 							, GFP_KERNEL)) == NULL)
 		goto err;
 	if (driver->table == NULL &&
-	     (driver->table = kzalloc(diag_max_registration*
+	     (driver->table = kzalloc(diag_max_reg*
 		      sizeof(struct diag_master_table),
 		       GFP_KERNEL)) == NULL)
 		goto err;

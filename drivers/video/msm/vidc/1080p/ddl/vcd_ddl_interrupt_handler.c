@@ -34,6 +34,8 @@ static void ddl_handle_enc_frame_done(struct ddl_client_context *ddl,
 static void ddl_handle_slice_done_slice_batch(struct ddl_client_context *ddl);
 static void ddl_handle_enc_frame_done_slice_mode(
 		struct ddl_client_context *ddl, u32 eos_present);
+static void ddl_handle_enc_skipframe_slice_mode(
+		struct ddl_client_context *ddl, u32 eos_present);
 
 static void ddl_fw_status_done_callback(struct ddl_context *ddl_context)
 {
@@ -117,9 +119,8 @@ static u32 ddl_channel_set_callback(struct ddl_context *ddl_context,
 			ddl->client_state = DDL_CLIENT_WAIT_FOR_INITCODEC;
 			ddl->instance_id = instance_id;
 			if (ddl->decoding) {
-				if (vidc_msg_timing)
-					ddl_calc_core_proc_time(__func__,
-						DEC_OP_TIME);
+				ddl_calc_core_proc_time(__func__,
+						DEC_OP_TIME, ddl);
 				if (ddl->codec_data.decoder.header_in_start)
 					ddl_vidc_decode_init_codec(ddl);
 				else {
@@ -151,8 +152,7 @@ static u32 ddl_encoder_seq_done_callback(struct ddl_context *ddl_context,
 		ddl_client_fatal_cb(ddl);
 		return true;
 	}
-	if (vidc_msg_timing)
-		ddl_calc_core_proc_time(__func__, ENC_OP_TIME);
+	ddl_calc_core_proc_time(__func__, ENC_OP_TIME, ddl);
 	ddl->cmd_state = DDL_CMD_INVALID;
 	DDL_MSG_LOW("ddl_state_transition: %s ~~> DDL_CLIENT_WAIT_FOR_FRAME",
 	ddl_get_state_string(ddl->client_state));
@@ -243,14 +243,17 @@ static u32 ddl_decoder_seq_done_callback(struct ddl_context *ddl_context,
 	u32 process_further = true;
 	struct ddl_profile_info_type disp_profile_info;
 
+	/* HTC_START (klockwork issue)*/
+	memset(&seq_hdr_info, 0, sizeof(struct vidc_1080p_seq_hdr_info));
+	/* HTC_END */
+
 	DDL_MSG_MED("ddl_decoder_seq_done_callback");
 	if (!ddl->decoding ||
 		!DDLCLIENT_STATE_IS(ddl, DDL_CLIENT_WAIT_FOR_INITCODECDONE)) {
 		DDL_MSG_ERROR("STATE-CRITICAL-HDDONE");
 		ddl_client_fatal_cb(ddl);
 	} else {
-		if (vidc_msg_timing)
-			ddl_calc_core_proc_time(__func__, DEC_OP_TIME);
+		ddl_calc_core_proc_time(__func__, DEC_OP_TIME, ddl);
 		ddl->cmd_state = DDL_CMD_INVALID;
 		DDL_MSG_LOW("ddl_state_transition: %s ~~>"
 			"DDL_CLIENT_WAIT_FOR_DPB",
@@ -472,10 +475,8 @@ static u32 ddl_dpb_buffers_set_done_callback(
 			DDL_MSG_LOW("ddl_state_transition: %s ~~>"
 				"DDL_CLIENT_WAIT_FOR_FRAME",
 				ddl_get_state_string(ddl->client_state));
-			if (vidc_msg_timing) {
-				ddl_calc_core_proc_time(__func__, DEC_OP_TIME);
-				ddl_reset_core_time_variables(DEC_OP_TIME);
-			}
+			ddl_calc_core_proc_time(__func__, DEC_OP_TIME, ddl);
+			ddl_reset_core_time_variables(DEC_OP_TIME);
 			ddl->client_state = DDL_CLIENT_WAIT_FOR_FRAME;
 			ddl_vidc_decode_frame_run(ddl);
 			ret_status = false;
@@ -500,8 +501,7 @@ static void ddl_encoder_frame_run_callback(
 		DDL_MSG_ERROR("STATE-CRITICAL-ENCFRMRUN");
 		ddl_client_fatal_cb(ddl);
 	} else {
-		if (vidc_msg_timing)
-			ddl_calc_core_proc_time(__func__, ENC_OP_TIME);
+		ddl_calc_core_proc_time(__func__, ENC_OP_TIME, ddl);
 		DDL_MSG_LOW("ENC_FRM_RUN_DONE");
 		ddl->cmd_state = DDL_CMD_INVALID;
 		vidc_1080p_get_encode_frame_info(&encoder->enc_frame_info);
@@ -519,11 +519,15 @@ static void ddl_encoder_frame_run_callback(
 		if (encoder->enc_frame_info.enc_frame_size ||
 			(encoder->enc_frame_info.enc_frame ==
 			VIDC_1080P_ENCODE_FRAMETYPE_SKIPPED) ||
-			DDLCLIENT_STATE_IS(ddl,
-			DDL_CLIENT_WAIT_FOR_EOS_DONE)) {
+			DDLCLIENT_STATE_IS(ddl, DDL_CLIENT_WAIT_FOR_EOS_DONE)) {
 			if (encoder->slice_delivery_info.enable) {
-				ddl_handle_enc_frame_done_slice_mode(ddl,
-								eos_present);
+				if (encoder->enc_frame_info.enc_frame ==
+					VIDC_1080P_ENCODE_FRAMETYPE_SKIPPED)
+					ddl_handle_enc_skipframe_slice_mode(
+							ddl, eos_present);
+				else
+					ddl_handle_enc_frame_done_slice_mode(
+							ddl, eos_present);
 			} else {
 				ddl_handle_enc_frame_done(ddl, eos_present);
 			}
@@ -1081,8 +1085,7 @@ static void ddl_decoder_input_done_callback(
 	input_vcd_frm->offset += dec_disp_info->input_bytes_consumed;
 	input_vcd_frm->data_len -= dec_disp_info->input_bytes_consumed;
 	ddl->input_frame.frm_trans_end = frame_transact_end;
-	if (vidc_msg_timing)
-		ddl_calc_core_proc_time(__func__, DEC_IP_TIME);
+	ddl_calc_core_proc_time(__func__, DEC_IP_TIME, ddl);
 	ddl_context->ddl_callback(VCD_EVT_RESP_INPUT_DONE, VCD_S_SUCCESS,
 		&ddl->input_frame, sizeof(struct ddl_frame_data_tag),
 		(u32 *)ddl, ddl->client_data);
@@ -1286,8 +1289,7 @@ static u32 ddl_decoder_output_done_callback(
 		}
 		output_vcd_frm->flags |= VCD_FRAME_FLAG_ENDOFFRAME;
 		output_frame->frm_trans_end = frame_transact_end;
-		if (vidc_msg_timing)
-			ddl_calc_core_proc_time(__func__, DEC_OP_TIME);
+		ddl_calc_core_proc_time(__func__, DEC_OP_TIME, ddl);
 		ddl_process_decoder_metadata(ddl);
 		vidc_sm_get_aspect_ratio_info(
 			&ddl->shared_mem[ddl->command_channel],
@@ -1707,6 +1709,13 @@ static void ddl_handle_enc_frame_done(struct ddl_client_context *ddl,
 	(void)ddl_get_encoded_frame(output_frame,
 		encoder->codec.codec, encoder->enc_frame_info.enc_frame
 								);
+	if (!IS_ERR_OR_NULL(output_frame->buff_ion_handle)) {
+		msm_ion_do_cache_op(ddl_context->video_ion_client,
+			output_frame->buff_ion_handle,
+			(unsigned long *) output_frame->virtual,
+			(unsigned long) output_frame->alloc_len,
+			ION_IOC_INV_CACHES);
+	}
 	ddl_process_encoder_metadata(ddl);
 	ddl_vidc_encode_dynamic_property(ddl, false);
 	ddl->input_frame.frm_trans_end = false;
@@ -1744,8 +1753,13 @@ static void ddl_handle_slice_done_slice_batch(struct ddl_client_context *ddl)
 	slice_output = (struct vidc_1080p_enc_slice_batch_out_param *)
 		(encoder->batch_frame.slice_batch_out.align_virtual_addr);
 	DDL_MSG_LOW(" after get no of slices = %d\n", num_slices_comp);
+	/* HTC_START (klockwork issue)*/
 	if (slice_output == NULL)
+	{
 		DDL_MSG_ERROR(" slice_output is NULL\n");
+		return ;
+	}
+	/* HTC_END */
 	encoder->slice_delivery_info.num_slices_enc += num_slices_comp;
 	if (vidc_msg_timing) {
 		ddl_calc_core_proc_time_cnt(__func__, ENC_SLICE_OP_TIME,
@@ -1778,6 +1792,27 @@ static void ddl_handle_slice_done_slice_batch(struct ddl_client_context *ddl)
 		vidc_sm_get_frame_tags(&ddl->shared_mem
 			[ddl->command_channel],
 			&output_frame->ip_frm_tag, &bottom_frame_tag);
+
+		if (start_bfr_idx == 0) {
+			encoder->batch_frame.first_output_frame_tag =
+				output_frame->ip_frm_tag;
+			DDL_MSG_LOW("%s: first_output_frame_tag[0x%x]",
+				__func__, output_frame->ip_frm_tag);
+			if (!output_frame->ip_frm_tag) {
+				DDL_MSG_ERROR("%s: first_output_frame_tag "\
+					"is zero", __func__);
+			}
+		}
+		if (output_frame->ip_frm_tag !=
+			encoder->batch_frame.first_output_frame_tag) {
+			DDL_MSG_ERROR("%s: output_frame->ip_frm_tag[0x%x] is "\
+				"not equal to the first_output_frame_tag[0x%x]\n",
+				__func__, output_frame->ip_frm_tag,
+				encoder->batch_frame.first_output_frame_tag);
+			output_frame->ip_frm_tag =
+				encoder->batch_frame.first_output_frame_tag;
+		}
+
 		ddl_get_encoded_frame(output_frame,
 				encoder->codec.codec,
 				encoder->enc_frame_info.enc_frame);
@@ -1860,6 +1895,27 @@ static void ddl_handle_enc_frame_done_slice_mode(
 		vidc_sm_get_frame_tags(&ddl->shared_mem
 			[ddl->command_channel],
 			&output_frame->ip_frm_tag, &bottom_frame_tag);
+
+		if (start_bfr_idx == 0) {
+			encoder->batch_frame.first_output_frame_tag =
+				output_frame->ip_frm_tag;
+			DDL_MSG_LOW("%s: first_output_frame_tag[0x%x]",
+				__func__, output_frame->ip_frm_tag);
+			if (!output_frame->ip_frm_tag) {
+				DDL_MSG_ERROR("%s: first_output_frame_tag "\
+					"is zero", __func__);
+			}
+		}
+		if (output_frame->ip_frm_tag !=
+			encoder->batch_frame.first_output_frame_tag) {
+			DDL_MSG_ERROR("%s: output_frame->ip_frm_tag[0x%x] is "\
+				"not equal to the first_output_frame_tag[0x%x]\n",
+				__func__, output_frame->ip_frm_tag,
+				encoder->batch_frame.first_output_frame_tag);
+			output_frame->ip_frm_tag =
+				encoder->batch_frame.first_output_frame_tag;
+		}
+
 		ddl_get_encoded_frame(output_frame,
 				encoder->codec.codec,
 				encoder->enc_frame_info.enc_frame);
@@ -1900,5 +1956,84 @@ static void ddl_handle_enc_frame_done_slice_mode(
 				VCD_S_SUCCESS, &(ddl->input_frame),
 				sizeof(struct ddl_frame_data_tag),
 				(u32 *) ddl, ddl->client_data);
+	}
+}
+
+static void ddl_handle_enc_skipframe_slice_mode(
+		struct ddl_client_context *ddl, u32 eos_present)
+{
+	struct ddl_context       *ddl_context = ddl->ddl_context;
+	struct ddl_encoder_data  *encoder = &(ddl->codec_data.encoder);
+	struct vcd_frame_data    *output_frame = NULL;
+	u32 bottom_frame_tag;
+	u8 *input_buffer_address = NULL;
+	u32 index = 0;
+	DDL_MSG_HIGH("ddl_handle_enc_skipframe_slice_mode: frame skipped");
+	vidc_sm_set_encoder_slice_batch_int_ctrl(
+			&ddl->shared_mem[ddl->command_channel],
+			1);
+	for (index = 0;
+		index < encoder->batch_frame.num_output_frames;
+		index++) {
+		output_frame =
+			&(encoder->batch_frame.output_frame[index].vcd_frm);
+		DDL_MSG_MED("output buffer: vcd_frm = 0x%x "
+				"frmbfr(virtual) = 0x%x frmbfr(physical) = 0x%x",
+				(u32)output_frame, (u32)output_frame->virtual,
+				(u32)output_frame->physical);
+		vidc_sm_get_frame_tags(
+				&ddl->shared_mem[ddl->command_channel],
+				&output_frame->ip_frm_tag,
+				&bottom_frame_tag);
+		if (!output_frame->ip_frm_tag) {
+			DDL_MSG_ERROR("%s: output frame tag is zero",
+				__func__);
+		}
+		ddl_get_encoded_frame(
+				output_frame,
+				encoder->codec.codec,
+				encoder->enc_frame_info.enc_frame);
+		output_frame->data_len = 0;
+		ddl->output_frame.frm_trans_end = false;
+		if (encoder->batch_frame.num_output_frames ==
+			(index + 1)) {
+			DDL_MSG_MED("last output bfr for skip frame, set EOF");
+			output_frame->flags |= VCD_FRAME_FLAG_ENDOFFRAME;
+			ddl_vidc_encode_dynamic_property(ddl, false);
+			if (eos_present)
+				ddl->output_frame.frm_trans_end = false;
+			else
+				ddl->output_frame.frm_trans_end = true;
+		}
+		ddl->output_frame.vcd_frm = *output_frame;
+		ddl_context->ddl_callback(
+				VCD_EVT_RESP_OUTPUT_DONE,
+				VCD_S_SUCCESS,
+				&(ddl->output_frame),
+				sizeof(struct ddl_frame_data_tag),
+				(u32 *)ddl,
+				ddl->client_data);
+
+		if (encoder->batch_frame.num_output_frames ==
+			(index + 1)) {
+			ddl->input_frame.frm_trans_end = false;
+			input_buffer_address =
+				ddl_context->dram_base_a.physical_base_addr +
+				(encoder->enc_frame_info.enc_luma_address);
+			ddl_get_input_frame_from_pool(ddl,
+					input_buffer_address);
+			DDL_MSG_MED("InpBfr: vcd_frm 0x%x frmbfr(virtual) 0x%x"
+					" frmbfr(physical) 0x%x",
+					(u32)&(ddl->input_frame.vcd_frm),
+					(u32)ddl->input_frame.vcd_frm.virtual,
+					(u32)ddl->input_frame.vcd_frm.physical);
+			ddl_context->ddl_callback(
+					VCD_EVT_RESP_INPUT_DONE,
+					VCD_S_SUCCESS,
+					&(ddl->input_frame),
+					sizeof(struct ddl_frame_data_tag),
+					(u32 *)ddl,
+					ddl->client_data);
+		}
 	}
 }

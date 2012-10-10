@@ -108,7 +108,7 @@ static void grmnet_ctrl_smd_read_w(struct work_struct *w)
 	void *buf;
 	unsigned long flags;
 
-	while (c->ch) {
+	while (1) {
 		sz = smd_cur_packet_size(c->ch);
 		if (sz == 0)
 			break;
@@ -143,7 +143,7 @@ static void grmnet_ctrl_smd_write_w(struct work_struct *w)
 	int ret;
 
 	spin_lock_irqsave(&port->port_lock, flags);
-	while (c->ch) {
+	while (1) {
 		if (list_empty(&c->tx_q))
 			break;
 

@@ -57,8 +57,7 @@ extern int panel_type;
 #define REV_1           (1 << REV_SHIFT)
 #define REV_2           (2 << REV_SHIFT)
 #define REV_3           (3 << REV_SHIFT)
-#define REV_4           (4 << REV_SHIFT)
-
+#define REV_4			(4 << REV_SHIFT)
 
 #define PANEL_ID_NONE		(0x0)
 
